@@ -98,6 +98,12 @@ Scanning sessions... found 112 sessions across 8 projects.
 
 ---
 
+## Article
+
+[I built a global session browser for Claude Code](https://dev.to/zhannam85/i-built-a-global-session-browser-for-claude-code-17om) — dev.to
+
+---
+
 ## License
 
 MIT · Made by [ZhannaM85](https://github.com/ZhannaM85)
