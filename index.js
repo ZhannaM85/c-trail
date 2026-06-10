@@ -11,7 +11,7 @@ const { spawnSync } = require('child_process');
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
 const HELP = `
-c-trail — browse and resume Claude Code sessions across all projects
+c-trail 🐾 — browse and resume Claude Code sessions across all projects
 
 Usage:
   c-trail                      Interactive picker — choose a session to resume
@@ -24,6 +24,8 @@ Examples:
   c-trail --list
   c-trail --filter my-project
   c-trail --filter "auth middleware"
+
+Made by ZhannaM85 · https://github.com/ZhannaM85/c-trail
 `;
 
 function parseSession(jsonlPath) {
