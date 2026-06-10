@@ -24,6 +24,7 @@ c-trail 🐾 — browse and resume Claude Code sessions across all projects
 Usage:
   c-trail                      Interactive picker (arrow keys)
   c-trail --list               Print all sessions and exit
+  c-trail --recent <n>         Show only the most recent n sessions
   c-trail --filter <text>      Filter by directory path or first message
   c-trail --help               Show this help
 
@@ -204,14 +205,26 @@ async function main() {
     return;
   }
 
-  const listOnly  = args.includes('--list');
-  const filterIdx = args.indexOf('--filter');
+  const listOnly   = args.includes('--list');
+  const filterIdx  = args.indexOf('--filter');
   const filterText = filterIdx !== -1 ? args[filterIdx + 1]?.toLowerCase() : null;
+  const recentIdx  = args.indexOf('--recent');
+  const recentN    = recentIdx !== -1 ? parseInt(args[recentIdx + 1], 10) : null;
+
+  if (recentN !== null && (isNaN(recentN) || recentN < 1)) {
+    console.error(`${YELLOW}--recent requires a positive number, e.g. --recent 10${R}`);
+    process.exit(1);
+  }
 
   process.stdout.write(`${DIM}Scanning sessions...${R} `);
   let sessions = getAllSessions();
   const projectCount = new Set(sessions.map(s => s.cwd)).size;
   console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
+
+  if (recentN !== null) {
+    sessions = sessions.slice(0, recentN);
+    console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} most recent sessions.\n`);
+  }
 
   if (filterText) {
     sessions = sessions.filter(s =>
