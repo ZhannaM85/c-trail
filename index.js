@@ -60,6 +60,7 @@ function parseSession(jsonlPath) {
         if (info.sessionId && info.cwd && info.firstMessage) break;
       } catch {}
     }
+    info.lastActive = fs.statSync(jsonlPath).mtime;
     return info.sessionId ? info : null;
   } catch {
     return null;
@@ -83,7 +84,7 @@ function getAllSessions() {
       }
     } catch {}
   }
-  return sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  return sessions.sort((a, b) => new Date(b.lastActive) - new Date(a.lastActive));
 }
 
 function formatDate(iso) {
@@ -96,11 +97,11 @@ function formatDate(iso) {
 function printAll(sessions) {
   sessions.forEach((s, i) => {
     const num  = String(i + 1).padStart(String(sessions.length).length);
-    const date = formatDate(s.timestamp);
+    const date = formatDate(s.lastActive);
     const cwd  = s.cwd || '?';
     const msg  = (s.firstMessage || '').slice(0, 100);
     const pad  = ''.padStart(String(sessions.length).length + 2);
-    console.log(`${GRAY}${num}.${R} ${DIM}[${R}${CYAN}${date}${R}${DIM}]${R}  ${YELLOW}${BOLD}${cwd}${R}`);
+    console.log(`${GRAY}${num}.${R} ${DIM}active ${R}${CYAN}${date}${R}  ${YELLOW}${BOLD}${cwd}${R}`);
     console.log(`${pad}  ${GRAY}"${msg}"${R}`);
     console.log();
   });
@@ -118,7 +119,7 @@ function renderPicker(sessions, selected, offset, prevLines) {
   for (let i = offset; i < offset + visible; i++) {
     const s = sessions[i];
     const isSelected = i === selected;
-    const date = formatDate(s.timestamp);
+    const date = formatDate(s.lastActive);
     const msg  = (s.firstMessage || '(no message)').slice(0, 70);
     const cwd  = s.cwd || '?';
 
