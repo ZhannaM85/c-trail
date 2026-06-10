@@ -43,6 +43,9 @@ Usage:
 Keys (interactive mode):
   ↑ ↓                          Navigate
   Enter                        Resume selected session
+  /                            Enter search mode (filter sessions)
+  Backspace                    Remove last search character
+  Escape                       Clear search / exit search mode
   q / Ctrl+C                   Quit
 
 Examples:
@@ -385,41 +388,47 @@ function exportToMarkdown(session) {
  * `prevLines` rows and clearing to end-of-screen, then redraws in place.
  * This avoids flickering without using a full terminal library.
  *
- * @param {Session[]} sessions  - Full filtered/sorted session list
- * @param {number}    selected  - Index of the currently highlighted session (0-based)
- * @param {number}    offset    - Index of the first visible session in the scroll window
- * @param {number}    prevLines - Number of lines written by the previous render (0 on first call)
- * @param {string}    [sortBy='active'] - Which date to show: 'created' = session start, else = last active
+ * @param {Session[]} sessions        - Filtered/sorted session list to display
+ * @param {number}    selected        - Index of the currently highlighted session (0-based)
+ * @param {number}    offset          - Index of the first visible session in the scroll window
+ * @param {number}    prevLines       - Number of lines written by the previous render (0 on first call)
+ * @param {string}    [sortBy='active']     - Which date to show: 'created' = session start, else = last active
+ * @param {boolean}   [searchMode=false]    - Whether the search input prompt is active
+ * @param {string}    [searchQuery='']      - Current inline search query
  * @returns {number} The number of lines written, to be passed as prevLines on the next call
  */
-function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active') {
-  const visible = Math.min(PAGE_SIZE, sessions.length - offset);
-
+function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active', searchMode = false, searchQuery = '') {
   if (prevLines > 0) {
     // Move cursor back to the top of what we drew, then clear to end of screen
     process.stdout.write(`\r\x1B[${prevLines}A\x1B[0J`);
   }
 
-  for (let i = offset; i < offset + visible; i++) {
-    const s = sessions[i];
-    const isSelected = i === selected;
-    const date = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
-    const msg  = (s.firstMessage || '(no message)').slice(0, 70);
-    const cwd  = s.cwd || '?';
+  const visible = Math.min(PAGE_SIZE, sessions.length - offset);
 
-    if (isSelected) {
-      const stats = sessionStats(s);
-      process.stdout.write(`${GREEN}${BOLD} ❯ ${R}${DIM}[${R}${CYAN}${BOLD}${date}${R}${DIM}]${R}  ${YELLOW}${BOLD}${cwd}${R}\n`);
-      process.stdout.write(`${GREEN}     "${msg}"  ${R}${DIM}[${stats}]${R}\n`);
-    } else {
-      const stats = sessionStats(s, false);
-      process.stdout.write(`${DIM}   [${date}]  ${cwd}${R}\n`);
-      process.stdout.write(`${GRAY}   "${msg}"  [${stats}]${R}\n`);
+  if (sessions.length === 0) {
+    process.stdout.write(`${DIM}  (no sessions match "${searchQuery}")${R}\n`);
+  } else {
+    for (let i = offset; i < offset + visible; i++) {
+      const s = sessions[i];
+      const isSelected = i === selected;
+      const date = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
+      const msg  = (s.firstMessage || '(no message)').slice(0, 70);
+      const cwd  = s.cwd || '?';
+
+      if (isSelected) {
+        const stats = sessionStats(s);
+        process.stdout.write(`${GREEN}${BOLD} ❯ ${R}${DIM}[${R}${CYAN}${BOLD}${date}${R}${DIM}]${R}  ${YELLOW}${BOLD}${cwd}${R}\n`);
+        process.stdout.write(`${GREEN}     "${msg}"  ${R}${DIM}[${stats}]${R}\n`);
+      } else {
+        const stats = sessionStats(s, false);
+        process.stdout.write(`${DIM}   [${date}]  ${cwd}${R}\n`);
+        process.stdout.write(`${GRAY}   "${msg}"  [${stats}]${R}\n`);
+      }
     }
   }
 
   // Preview panel — fixed PREVIEW_HEIGHT lines so total height stays constant while navigating
-  const preview = loadPreview(sessions[selected]);
+  const preview = sessions.length > 0 ? loadPreview(sessions[selected]) : [];
   process.stdout.write(`\n${DIM}─── Preview ${'─'.repeat(50)}${R}\n`);
   for (let i = 0; i < PREVIEW_HEIGHT; i++) {
     const msg = preview[i];
@@ -431,10 +440,21 @@ function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active') 
     }
   }
 
-  const counter = `${CYAN}${selected + 1}${R}${DIM}/${sessions.length}${R}`;
-  process.stdout.write(`\n${DIM}↑↓ navigate · enter resume · q quit    ${counter}${R}`);
+  const counter = sessions.length > 0
+    ? `${CYAN}${selected + 1}${R}${DIM}/${sessions.length}${R}`
+    : `${DIM}0/0${R}`;
 
-  // visible*2 session rows + blank line + separator + PREVIEW_HEIGHT + blank line before hint = +3
+  if (searchMode) {
+    process.stdout.write(`\n${CYAN}/${R}${searchQuery}${DIM}█${R}  ${DIM}esc clear · ↑↓ navigate · enter confirm${R}  ${counter}`);
+  } else {
+    process.stdout.write(`\n${DIM}↑↓ navigate · enter resume · / search · q quit    ${counter}${R}`);
+  }
+
+  if (sessions.length === 0) {
+    // 1 (no-results) + 2 (blank+separator) + PREVIEW_HEIGHT + 1 (blank+status)
+    return PREVIEW_HEIGHT + 4;
+  }
+  // visible*2 session rows + blank+separator + PREVIEW_HEIGHT + blank+status
   return visible * 2 + PREVIEW_HEIGHT + 3;
 }
 
@@ -451,11 +471,24 @@ async function pickInteractive(sessions, sortBy = 'active') {
     let selected = 0;
     let offset   = 0;
     let prevLines = 0;
+    let searchMode = false;
+    let searchQuery = '';
+    let filtered = sessions;
+
+    function applyFilter() {
+      if (!searchQuery) return sessions;
+      const q = searchQuery.toLowerCase();
+      return sessions.filter(s =>
+        s.cwd?.toLowerCase().includes(q) ||
+        s.firstMessage?.toLowerCase().includes(q) ||
+        s.allText?.includes(q)
+      );
+    }
 
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
 
-    prevLines = renderPicker(sessions, selected, offset, prevLines, sortBy);
+    prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
 
     const cleanup = (result) => {
       process.stdin.setRawMode(false);
@@ -465,30 +498,96 @@ async function pickInteractive(sessions, sortBy = 'active') {
       resolve(result);
     };
 
-    process.stdin.on('keypress', (_, key) => {
+    process.stdin.on('keypress', (ch, key) => {
       if (!key) return;
 
-      if ((key.ctrl && key.name === 'c') || key.name === 'q') {
+      if (key.ctrl && key.name === 'c') {
+        cleanup(null);
+        return;
+      }
+
+      if (searchMode) {
+        if (key.name === 'escape') {
+          searchQuery = '';
+          searchMode = false;
+          selected = 0;
+          offset = 0;
+          filtered = applyFilter();
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+          return;
+        }
+
+        if (key.name === 'return') {
+          searchMode = false;
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+          return;
+        }
+
+        if (key.name === 'backspace') {
+          searchQuery = searchQuery.slice(0, -1);
+          selected = 0;
+          offset = 0;
+          filtered = applyFilter();
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+          return;
+        }
+
+        if (key.name === 'up') {
+          if (selected > 0) {
+            selected--;
+            if (selected < offset) offset = selected;
+            prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+          }
+          return;
+        }
+
+        if (key.name === 'down') {
+          if (filtered.length > 0 && selected < filtered.length - 1) {
+            selected++;
+            if (selected >= offset + PAGE_SIZE) offset = selected - PAGE_SIZE + 1;
+            prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+          }
+          return;
+        }
+
+        if (ch && !key.ctrl && !key.meta && ch.length === 1) {
+          searchQuery += ch;
+          selected = 0;
+          offset = 0;
+          filtered = applyFilter();
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+        }
+        return;
+      }
+
+      // Normal navigation mode
+      if (key.name === 'q') {
         cleanup(null);
         return;
       }
 
       if (key.name === 'return') {
-        cleanup(sessions[selected]);
+        if (filtered.length > 0) cleanup(filtered[selected]);
+        return;
+      }
+
+      if (ch === '/') {
+        searchMode = true;
+        prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
         return;
       }
 
       if (key.name === 'up' && selected > 0) {
         selected--;
         if (selected < offset) offset = selected;
-      } else if (key.name === 'down' && selected < sessions.length - 1) {
+      } else if (key.name === 'down' && selected < filtered.length - 1) {
         selected++;
         if (selected >= offset + PAGE_SIZE) offset = selected - PAGE_SIZE + 1;
       } else {
         return;
       }
 
-      prevLines = renderPicker(sessions, selected, offset, prevLines, sortBy);
+      prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
     });
   });
 }
