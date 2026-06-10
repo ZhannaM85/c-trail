@@ -1,10 +1,10 @@
 {
   "name": "c-trail",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browse and resume Claude Code sessions across all your projects",
   "main": "index.js",
   "bin": {
-    "c-trail": "./index.js"
+    "c-trail": "index.js"
   },
   "scripts": {
     "start": "node index.js"
@@ -23,7 +23,7 @@
   "homepage": "https://github.com/ZhannaM85/c-trail",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ZhannaM85/c-trail.git"
+    "url": "git+https://github.com/ZhannaM85/c-trail.git"
   },
   "bugs": {
     "url": "https://github.com/ZhannaM85/c-trail/issues"
