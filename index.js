@@ -584,7 +584,7 @@ function pickWithFzf(sessions, sortBy = 'active') {
       '--layout', 'reverse',
       '--border',
       '--prompt', 'c-trail> ',
-      '--preview', `node "${scriptPath}" {1} "${dataPath}"`,
+      '--preview', `"${process.execPath}" "${scriptPath}" {1} "${dataPath}"`,
       '--preview-window', 'right:40%:wrap',
     ], { input: lines, encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'] });
 

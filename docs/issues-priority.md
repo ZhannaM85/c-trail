@@ -46,4 +46,4 @@ Issues grouped by implementation tier. Work top-to-bottom within each tier.
 
 | # | Issue | Notes |
 |---|-------|-------|
-| [#10](https://github.com/ZhannaM85/c-trail/issues/10) | chore: cross-platform verification (macOS, Linux) | Expected to work — same `~/.claude/projects/` path — needs confirmation |
+| ~~[#10](https://github.com/ZhannaM85/c-trail/issues/10)~~ | ~~chore: cross-platform verification (macOS, Linux)~~ | ~~Expected to work — same `~/.claude/projects/` path — needs confirmation~~ |

@@ -18,7 +18,7 @@ Claude Code stores all session data centrally in `~/.claude/projects/` — one s
 npm install -g c-trail
 ```
 
-Requires Node.js 14+ and Claude Code CLI.
+Requires Node.js 14+ and Claude Code CLI. Works on macOS, Linux, and Windows — all platforms where Claude Code stores sessions at `~/.claude/projects/`.
 
 ---
 
