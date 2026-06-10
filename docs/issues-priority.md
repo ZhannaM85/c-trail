@@ -37,7 +37,7 @@ Issues grouped by implementation tier. Work top-to-bottom within each tier.
 
 | # | Issue | Notes |
 |---|-------|-------|
-| [#11](https://github.com/ZhannaM85/c-trail/issues/11) | feat: session export to Markdown | `c-trail export <session-id>` — dump session for sharing or archiving |
+| ~~[#11](https://github.com/ZhannaM85/c-trail/issues/11)~~ | ~~feat: session export to Markdown~~ | ~~`c-trail export <session-id>` — dump session for sharing or archiving~~ |
 | [#9](https://github.com/ZhannaM85/c-trail/issues/9) | feat: fzf integration (optional) | Pipe through fzf if available; optional enhancement |
 
 ---
