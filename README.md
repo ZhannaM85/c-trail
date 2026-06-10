@@ -1,6 +1,7 @@
 # c-trail 🐾
 
 [![npm version](https://img.shields.io/npm/v/c-trail.svg)](https://www.npmjs.com/package/c-trail)
+[![license](https://img.shields.io/npm/l/c-trail.svg)](LICENSE)
 
 > Browse and resume your Claude Code session history across all projects — from anywhere.
 
