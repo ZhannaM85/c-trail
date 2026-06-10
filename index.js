@@ -28,6 +28,8 @@ Usage:
   c-trail resume <id>          Resume a specific session by ID (skip picker)
   c-trail export <id>          Export a session to Markdown (stdout)
   c-trail export <id> --output <file>  Save exported Markdown to a file
+  c-trail stats                Print aggregate usage summary across all sessions
+  c-trail stats --top <n>      Show top n projects in the breakdown (default: 10)
   c-trail --list               Print all sessions and exit
   c-trail --recent <n>         Show only the most recent n sessions
   c-trail --sort <order>       Sort order: active (default), created, project, messages, size
@@ -46,6 +48,8 @@ Examples:
   c-trail resume abc123
   c-trail export abc123
   c-trail export abc123 --output session.md
+  c-trail stats
+  c-trail stats --top 5
   c-trail --list
   c-trail --filter my-project
   c-trail --filter "auth middleware"
@@ -598,6 +602,60 @@ function pickWithFzf(sessions, sortBy = 'active') {
 }
 
 /**
+ * Prints an aggregate usage summary across all sessions, with a per-project breakdown.
+ *
+ * @param {Session[]} sessions - All sessions to aggregate
+ * @param {number}    [topN=10] - How many projects to show in the breakdown
+ */
+function printStats(sessions, topN = 10) {
+  const totalSessions = sessions.length;
+  const totalProjects = new Set(sessions.map(s => s.cwd)).size;
+  const totalMessages = sessions.reduce((sum, s) => sum + s.messageCount, 0);
+  const totalTokens   = sessions.reduce((sum, s) => sum + s.totalTokens, 0);
+  const totalCost     = sessions.reduce((sum, s) => sum + s.estimatedCostUSD, 0);
+
+  const costStr = totalCost >= 0.0001
+    ? `$${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}`
+    : '$0.00';
+
+  console.log(`${BOLD}Overall${R}\n`);
+  console.log(`  ${DIM}Sessions${R}   ${CYAN}${BOLD}${totalSessions}${R}`);
+  console.log(`  ${DIM}Projects${R}   ${CYAN}${BOLD}${totalProjects}${R}`);
+  console.log(`  ${DIM}Messages${R}   ${CYAN}${BOLD}${totalMessages}${R}`);
+  console.log(`  ${DIM}Tokens${R}     ${CYAN}${BOLD}${formatTokens(totalTokens)}${R}`);
+  console.log(`  ${DIM}Est. cost${R}  ${CYAN}${BOLD}${costStr}${R}`);
+  console.log();
+
+  const byProject = {};
+  for (const s of sessions) {
+    const key = s.cwd || '(unknown)';
+    if (!byProject[key]) byProject[key] = { sessions: 0, messages: 0, tokens: 0, cost: 0 };
+    byProject[key].sessions++;
+    byProject[key].messages += s.messageCount;
+    byProject[key].tokens   += s.totalTokens;
+    byProject[key].cost     += s.estimatedCostUSD;
+  }
+
+  const top = Object.entries(byProject)
+    .sort((a, b) => b[1].tokens - a[1].tokens)
+    .slice(0, topN);
+
+  console.log(`${BOLD}Top ${top.length} project${top.length !== 1 ? 's' : ''} by token usage${R}\n`);
+  for (const [cwd, stats] of top) {
+    const pCost = stats.cost >= 0.0001
+      ? `~$${stats.cost < 0.01 ? stats.cost.toFixed(4) : stats.cost.toFixed(2)}`
+      : '$0.00';
+    console.log(`  ${YELLOW}${BOLD}${cwd}${R}`);
+    console.log(
+      `    ${DIM}${stats.sessions} session${stats.sessions !== 1 ? 's' : ''} · ` +
+      `${stats.messages} msg${stats.messages !== 1 ? 's' : ''} · ` +
+      `${formatTokens(stats.tokens)} · ${pCost}${R}`
+    );
+    console.log();
+  }
+}
+
+/**
  * CLI entry point. Parses process.argv, applies filters and sorting,
  * then dispatches to the appropriate command or picker.
  *
@@ -671,6 +729,22 @@ async function main() {
     } else {
       process.stdout.write(markdown + '\n');
     }
+    return;
+  }
+
+  // c-trail stats [--top N] — aggregate usage summary across all sessions
+  if (args[0] === 'stats') {
+    const topIdx = args.indexOf('--top');
+    const topN   = topIdx !== -1 ? parseInt(args[topIdx + 1], 10) : 10;
+    if (topIdx !== -1 && (isNaN(topN) || topN < 1)) {
+      console.error(`${YELLOW}--top requires a positive number, e.g. --top 5${R}`);
+      process.exit(1);
+    }
+    process.stdout.write(`${DIM}Scanning sessions...${R} `);
+    const sessions = getAllSessions();
+    console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions.\n`);
+    if (sessions.length === 0) { console.log('No sessions found.'); return; }
+    printStats(sessions, topN);
     return;
   }
 
