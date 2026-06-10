@@ -25,6 +25,7 @@ Usage:
   c-trail                      Interactive picker (arrow keys)
   c-trail --list               Print all sessions and exit
   c-trail --recent <n>         Show only the most recent n sessions
+  c-trail --sort <order>       Sort order: active (default), created, project
   c-trail --filter <text>      Filter by directory path or first message
   c-trail --help               Show this help
 
@@ -94,14 +95,15 @@ function formatDate(iso) {
     + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function printAll(sessions) {
+function printAll(sessions, sortBy = 'active') {
+  const label = sortBy === 'created' ? 'created' : 'active';
   sessions.forEach((s, i) => {
     const num  = String(i + 1).padStart(String(sessions.length).length);
-    const date = formatDate(s.lastActive);
+    const date = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
     const cwd  = s.cwd || '?';
     const msg  = (s.firstMessage || '').slice(0, 100);
     const pad  = ''.padStart(String(sessions.length).length + 2);
-    console.log(`${GRAY}${num}.${R} ${DIM}active ${R}${CYAN}${date}${R}  ${YELLOW}${BOLD}${cwd}${R}`);
+    console.log(`${GRAY}${num}.${R} ${DIM}${label} ${R}${CYAN}${date}${R}  ${YELLOW}${BOLD}${cwd}${R}`);
     console.log(`${pad}  ${GRAY}"${msg}"${R}`);
     console.log();
   });
@@ -119,7 +121,7 @@ function renderPicker(sessions, selected, offset, prevLines) {
   for (let i = offset; i < offset + visible; i++) {
     const s = sessions[i];
     const isSelected = i === selected;
-    const date = formatDate(s.lastActive);
+    const date = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
     const msg  = (s.firstMessage || '(no message)').slice(0, 70);
     const cwd  = s.cwd || '?';
 
@@ -139,7 +141,7 @@ function renderPicker(sessions, selected, offset, prevLines) {
   return visible * 2 + 1;
 }
 
-async function pickInteractive(sessions) {
+async function pickInteractive(sessions, sortBy = 'active') {
   return new Promise((resolve) => {
     let selected = 0;
     let offset   = 0;
@@ -211,6 +213,14 @@ async function main() {
   const filterText = filterIdx !== -1 ? args[filterIdx + 1]?.toLowerCase() : null;
   const recentIdx  = args.indexOf('--recent');
   const recentN    = recentIdx !== -1 ? parseInt(args[recentIdx + 1], 10) : null;
+  const sortIdx    = args.indexOf('--sort');
+  const sortBy     = sortIdx !== -1 ? args[sortIdx + 1] : 'active';
+
+  const SORT_OPTIONS = ['active', 'created', 'project'];
+  if (!SORT_OPTIONS.includes(sortBy)) {
+    console.error(`${YELLOW}--sort must be one of: ${SORT_OPTIONS.join(', ')}${R}`);
+    process.exit(1);
+  }
 
   if (recentN !== null && (isNaN(recentN) || recentN < 1)) {
     console.error(`${YELLOW}--recent requires a positive number, e.g. --recent 10${R}`);
@@ -221,6 +231,17 @@ async function main() {
   let sessions = getAllSessions();
   const projectCount = new Set(sessions.map(s => s.cwd)).size;
   console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
+
+  if (sortBy === 'created') {
+    sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  } else if (sortBy === 'project') {
+    sessions.sort((a, b) => (a.cwd || '').localeCompare(b.cwd || ''));
+  }
+  // 'active' is the default sort from getAllSessions — no re-sort needed
+
+  if (sortBy !== 'active') {
+    console.log(`${DIM}Sorted by${R} ${CYAN}${sortBy}${R}.\n`);
+  }
 
   if (recentN !== null) {
     sessions = sessions.slice(0, recentN);
@@ -238,11 +259,11 @@ async function main() {
 
   if (sessions.length === 0) { console.log('No sessions found.'); return; }
 
-  if (listOnly) { printAll(sessions); return; }
+  if (listOnly) { printAll(sessions, sortBy); return; }
 
   const chosen = process.stdin.isTTY
-    ? await pickInteractive(sessions)
-    : (printAll(sessions), await pickNumbered(sessions));
+    ? await pickInteractive(sessions, sortBy)
+    : (printAll(sessions, sortBy), await pickNumbered(sessions));
 
   if (!chosen) { console.log('Cancelled.'); return; }
 
