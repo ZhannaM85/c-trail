@@ -9,6 +9,7 @@ const { spawnSync } = require('child_process');
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 const PAGE_SIZE = 8;
+const PREVIEW_HEIGHT = 4; // fixed number of preview lines (keeps layout stable)
 
 const R      = '\x1B[0m';
 const BOLD   = '\x1B[1m';
@@ -109,9 +110,38 @@ function printAll(sessions, sortBy = 'active') {
   });
 }
 
+const previewCache = new Map();
+
+function loadPreview(session) {
+  if (previewCache.has(session.sessionId)) return previewCache.get(session.sessionId);
+  try {
+    const lines = fs.readFileSync(session.file, 'utf8').split('\n');
+    const messages = [];
+    for (const line of lines.slice(0, 300)) {
+      if (!line.trim() || messages.length >= PREVIEW_HEIGHT) break;
+      try {
+        const obj = JSON.parse(line);
+        if (obj.type === 'user' && obj.message?.content) {
+          const c = obj.message.content;
+          const text = (typeof c === 'string' ? c : c[0]?.text || '').replace(/\s+/g, ' ').trim();
+          if (text) messages.push({ role: 'user', text });
+        } else if (obj.type === 'assistant' && obj.message?.content) {
+          const c = obj.message.content;
+          const text = (Array.isArray(c) ? c.find(b => b.type === 'text')?.text || '' : c).replace(/\s+/g, ' ').trim();
+          if (text) messages.push({ role: 'assistant', text });
+        }
+      } catch {}
+    }
+    previewCache.set(session.sessionId, messages);
+    return messages;
+  } catch {
+    return [];
+  }
+}
+
 // Renders the visible window; returns the number of \n-terminated lines written
 // so the next call knows how far to move the cursor back up.
-function renderPicker(sessions, selected, offset, prevLines) {
+function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active') {
   const visible = Math.min(PAGE_SIZE, sessions.length - offset);
 
   if (prevLines > 0) {
@@ -134,11 +164,24 @@ function renderPicker(sessions, selected, offset, prevLines) {
     }
   }
 
+  // Preview panel — fixed PREVIEW_HEIGHT lines so layout stays stable
+  const preview = loadPreview(sessions[selected]);
+  process.stdout.write(`\n${DIM}─── Preview ${'─'.repeat(50)}${R}\n`);
+  for (let i = 0; i < PREVIEW_HEIGHT; i++) {
+    const msg = preview[i];
+    if (msg) {
+      const prefix = msg.role === 'user' ? `${CYAN} You${R}` : `${GREEN} Claude${R}`;
+      process.stdout.write(`${prefix}${DIM}: ${R}${GRAY}${msg.text.slice(0, 76)}${R}\n`);
+    } else {
+      process.stdout.write('\n');
+    }
+  }
+
   const counter = `${CYAN}${selected + 1}${R}${DIM}/${sessions.length}${R}`;
   process.stdout.write(`\n${DIM}↑↓ navigate · enter resume · q quit    ${counter}${R}`);
 
-  // visible*2 session lines + 1 blank line before hint, all ended with \n
-  return visible * 2 + 1;
+  // visible*2 session lines + 2 (blank+separator) + PREVIEW_HEIGHT + 1 (blank before hint)
+  return visible * 2 + PREVIEW_HEIGHT + 3;
 }
 
 async function pickInteractive(sessions, sortBy = 'active') {
@@ -150,7 +193,7 @@ async function pickInteractive(sessions, sortBy = 'active') {
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
 
-    prevLines = renderPicker(sessions, selected, offset, prevLines);
+    prevLines = renderPicker(sessions, selected, offset, prevLines, sortBy);
 
     const cleanup = (result) => {
       process.stdin.setRawMode(false);
@@ -183,7 +226,7 @@ async function pickInteractive(sessions, sortBy = 'active') {
         return;
       }
 
-      prevLines = renderPicker(sessions, selected, offset, prevLines);
+      prevLines = renderPicker(sessions, selected, offset, prevLines, sortBy);
     });
   });
 }
