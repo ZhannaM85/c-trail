@@ -28,7 +28,7 @@ Usage:
   c-trail --recent <n>         Show only the most recent n sessions
   c-trail --sort <order>       Sort order: active (default), created, project, messages, size
   c-trail --project <name>     Filter by project name (last folder in path)
-  c-trail --filter <text>      Filter by directory path or first message
+  c-trail --filter <text>      Filter by directory path or any message
   c-trail --help               Show this help
 
 Keys (interactive mode):
@@ -49,24 +49,27 @@ function parseSession(jsonlPath) {
   try {
     const lines = fs.readFileSync(jsonlPath, 'utf8').split('\n');
     const info = { file: jsonlPath };
-    for (const line of lines.slice(0, 40)) {
+    const messageTexts = [];
+    for (const line of lines) {
       if (!line.trim()) continue;
       try {
         const obj = JSON.parse(line);
         if (!info.sessionId && obj.sessionId) info.sessionId = obj.sessionId;
         if (!info.cwd && obj.cwd) info.cwd = obj.cwd;
         if (!info.timestamp && obj.timestamp) info.timestamp = obj.timestamp;
-        if (!info.firstMessage && obj.type === 'user' && obj.message?.content) {
+        if (obj.type === 'user' && obj.message?.content) {
           const c = obj.message.content;
-          info.firstMessage = (typeof c === 'string' ? c : c[0]?.text || '').replace(/\s+/g, ' ').trim();
+          const text = (typeof c === 'string' ? c : c[0]?.text || '').replace(/\s+/g, ' ').trim();
+          if (!info.firstMessage && text) info.firstMessage = text;
+          if (text) messageTexts.push(text);
         }
-        if (info.sessionId && info.cwd && info.firstMessage) break;
       } catch {}
     }
+    info.allText = messageTexts.join('\n').toLowerCase();
     const stat = fs.statSync(jsonlPath);
     info.lastActive = stat.mtime;
     info.fileSize = stat.size;
-    info.messageCount = lines.filter(l => l.includes('"type":"user"')).length;
+    info.messageCount = messageTexts.length;
     return info.sessionId ? info : null;
   } catch {
     return null;
@@ -312,7 +315,7 @@ async function main() {
   if (filterText) {
     sessions = sessions.filter(s =>
       s.cwd?.toLowerCase().includes(filterText) ||
-      s.firstMessage?.toLowerCase().includes(filterText)
+      s.allText?.includes(filterText)
     );
     if (sessions.length === 0) { console.log(`${YELLOW}No sessions matching "${filterText}".${R}`); return; }
     console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} sessions matching ${YELLOW}"${filterText}"${R}.\n`);
