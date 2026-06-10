@@ -25,6 +25,8 @@ c-trail 🐾 — browse and resume Claude Code sessions across all projects
 Usage:
   c-trail                      Interactive picker (arrow keys)
   c-trail resume <id>          Resume a specific session by ID (skip picker)
+  c-trail export <id>          Export a session to Markdown (stdout)
+  c-trail export <id> --output <file>  Save exported Markdown to a file
   c-trail --list               Print all sessions and exit
   c-trail --recent <n>         Show only the most recent n sessions
   c-trail --sort <order>       Sort order: active (default), created, project, messages, size
@@ -40,6 +42,8 @@ Keys (interactive mode):
 Examples:
   c-trail
   c-trail resume abc123
+  c-trail export abc123
+  c-trail export abc123 --output session.md
   c-trail --list
   c-trail --filter my-project
   c-trail --filter "auth middleware"
@@ -191,6 +195,57 @@ function loadPreview(session) {
   }
 }
 
+function extractText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter(b => b.type === 'text')
+    .map(b => b.text || '')
+    .join('\n');
+}
+
+function exportToMarkdown(session) {
+  const lines = fs.readFileSync(session.file, 'utf8').split('\n');
+  const messages = [];
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const obj = JSON.parse(line);
+      if (obj.type === 'user' && obj.message?.content) {
+        const text = extractText(obj.message.content).trim();
+        if (text) messages.push({ role: 'You', text });
+      } else if (obj.type === 'assistant' && obj.message?.content) {
+        const text = extractText(obj.message.content).trim();
+        if (text) messages.push({ role: 'Claude', text });
+      }
+    } catch {}
+  }
+
+  const out = [];
+  out.push('# Session Export');
+  out.push('');
+  out.push(`**Session ID:** \`${session.sessionId}\``);
+  out.push(`**Project:** \`${session.cwd || 'unknown'}\``);
+  out.push(`**Started:** ${formatDate(session.timestamp)}`);
+  out.push(`**Last active:** ${formatDate(session.lastActive)}`);
+  out.push(`**Stats:** ${sessionStats(session)}`);
+  out.push('');
+  out.push('---');
+  out.push('');
+
+  for (const msg of messages) {
+    out.push(`## ${msg.role}`);
+    out.push('');
+    out.push(msg.text);
+    out.push('');
+    out.push('---');
+    out.push('');
+  }
+
+  return out.join('\n');
+}
+
 // Renders the visible window; returns the number of \n-terminated lines written
 // so the next call knows how far to move the cursor back up.
 function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active') {
@@ -327,6 +382,37 @@ async function main() {
       stdio: 'inherit',
       shell: true,
     });
+    return;
+  }
+
+  if (args[0] === 'export') {
+    const targetId = args[1];
+    if (!targetId) {
+      console.error(`${YELLOW}Usage: c-trail export <session-id> [--output <file>]${R}`);
+      process.exit(1);
+    }
+    const outputIdx  = args.indexOf('--output');
+    const outputFile = outputIdx !== -1 ? args[outputIdx + 1] : null;
+
+    process.stdout.write(`${DIM}Scanning sessions...${R} `);
+    const sessions = getAllSessions();
+    const projectCount = new Set(sessions.map(s => s.cwd)).size;
+    console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
+
+    const chosen = sessions.find(s => s.sessionId === targetId);
+    if (!chosen) {
+      console.error(`${YELLOW}No session found with ID "${targetId}".${R}`);
+      process.exit(1);
+    }
+
+    const markdown = exportToMarkdown(chosen);
+
+    if (outputFile) {
+      fs.writeFileSync(outputFile, markdown, 'utf8');
+      console.log(`${GREEN}Exported to${R} ${YELLOW}${outputFile}${R}`);
+    } else {
+      process.stdout.write(markdown + '\n');
+    }
     return;
   }
 
