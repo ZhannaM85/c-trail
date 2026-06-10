@@ -35,6 +35,8 @@ Usage:
   c-trail --sort <order>       Sort order: active (default), created, project, messages, size
   c-trail --project <name>     Filter by project name (last folder in path)
   c-trail --filter <text>      Filter by directory path or any message
+  c-trail --since <date>       Show only sessions active on or after YYYY-MM-DD
+  c-trail --before <date>      Show only sessions active on or before YYYY-MM-DD
   c-trail --no-fzf             Disable fzf even if it is installed
   c-trail --help               Show this help
 
@@ -53,6 +55,9 @@ Examples:
   c-trail --list
   c-trail --filter my-project
   c-trail --filter "auth middleware"
+  c-trail --since 2026-06-01
+  c-trail --before 2026-05-01
+  c-trail --since 2026-05-01 --before 2026-06-01
 
 Made by ZhannaM85 · https://github.com/ZhannaM85/c-trail
 `;
@@ -758,6 +763,10 @@ async function main() {
   const recentN    = recentIdx !== -1 ? parseInt(args[recentIdx + 1], 10) : null;
   const sortIdx    = args.indexOf('--sort');
   const sortBy     = sortIdx !== -1 ? args[sortIdx + 1] : 'active';
+  const sinceIdx   = args.indexOf('--since');
+  const sinceStr   = sinceIdx !== -1 ? args[sinceIdx + 1] : null;
+  const beforeIdx  = args.indexOf('--before');
+  const beforeStr  = beforeIdx !== -1 ? args[beforeIdx + 1] : null;
 
   const SORT_OPTIONS = ['active', 'created', 'project', 'messages', 'size'];
   if (!SORT_OPTIONS.includes(sortBy)) {
@@ -767,6 +776,16 @@ async function main() {
 
   if (recentN !== null && (isNaN(recentN) || recentN < 1)) {
     console.error(`${YELLOW}--recent requires a positive number, e.g. --recent 10${R}`);
+    process.exit(1);
+  }
+
+  const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  if (sinceStr && !ISO_DATE_RE.test(sinceStr)) {
+    console.error(`${YELLOW}--since requires an ISO date (YYYY-MM-DD), e.g. --since 2026-06-01${R}`);
+    process.exit(1);
+  }
+  if (beforeStr && !ISO_DATE_RE.test(beforeStr)) {
+    console.error(`${YELLOW}--before requires an ISO date (YYYY-MM-DD), e.g. --before 2026-06-01${R}`);
     process.exit(1);
   }
 
@@ -810,6 +829,21 @@ async function main() {
     );
     if (sessions.length === 0) { console.log(`${YELLOW}No sessions matching "${filterText}".${R}`); return; }
     console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} sessions matching ${YELLOW}"${filterText}"${R}.\n`);
+  }
+
+  if (sinceStr) {
+    const since = new Date(sinceStr + 'T00:00:00');
+    sessions = sessions.filter(s => new Date(s.lastActive) >= since);
+    if (sessions.length === 0) { console.log(`${YELLOW}No sessions found on or after ${sinceStr}.${R}`); return; }
+    console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} sessions since ${YELLOW}${sinceStr}${R}.\n`);
+  }
+
+  if (beforeStr) {
+    const before = new Date(beforeStr + 'T00:00:00');
+    before.setDate(before.getDate() + 1); // include the full before date
+    sessions = sessions.filter(s => new Date(s.lastActive) < before);
+    if (sessions.length === 0) { console.log(`${YELLOW}No sessions found on or before ${beforeStr}.${R}`); return; }
+    console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} sessions before ${YELLOW}${beforeStr}${R}.\n`);
   }
 
   if (sessions.length === 0) { console.log('No sessions found.'); return; }
