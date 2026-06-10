@@ -2,11 +2,11 @@
 
 ## High Priority
 
-### Interactive arrow-key picker
+### ✅ Done — Interactive arrow-key picker
 Replace the numbered list with an arrow-key TUI so users can navigate sessions without typing a number.
 Candidate: `@inquirer/prompts` (single small dependency).
 
-### Session preview before resuming
+### ✅ Done — Session preview before resuming
 Show the first few messages of a conversation before committing to resume — so users can confirm it's the right session.
 
 ### Full-text search
@@ -28,11 +28,11 @@ Token count and cost are available in the `.jsonl` files and could be surfaced t
 ### Direct resume by session ID
 `c-trail resume <session-id>` — skip the picker and jump straight to a known session.
 
-### `--recent <n>` flag
+### ✅ Done — `--recent <n>` flag
 Show only the last N sessions instead of all of them.
 Example: `c-trail --recent 20`
 
-### Colors
+### ✅ Done — Colors
 Highlight dates, paths, and message previews with distinct colors to make scanning easier.
 
 ---
