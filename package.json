@@ -1,6 +1,6 @@
 {
   "name": "c-trail",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "description": "Browse and resume Claude Code sessions across all your projects",
   "main": "index.js",
   "bin": {
