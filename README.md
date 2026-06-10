@@ -1,5 +1,7 @@
 # c-trail 🐾
 
+[![npm version](https://img.shields.io/npm/v/c-trail.svg)](https://www.npmjs.com/package/c-trail)
+
 > Browse and resume your Claude Code session history across all projects — from anywhere.
 
 Claude Code's built-in `--resume` only shows sessions for the directory you're currently in. `c-trail` gives you a global view: every session, every project, in one list.
