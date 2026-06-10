@@ -18,8 +18,19 @@
     "resume",
     "history"
   ],
-  "author": "",
+  "author": "ZhannaM85",
   "license": "MIT",
+  "homepage": "https://github.com/ZhannaM85/c-trail",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZhannaM85/c-trail.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ZhannaM85/c-trail/issues"
+  },
+  "files": [
+    "index.js"
+  ],
   "engines": {
     "node": ">=14"
   }
