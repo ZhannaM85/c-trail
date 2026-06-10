@@ -27,6 +27,7 @@ Usage:
   c-trail --list               Print all sessions and exit
   c-trail --recent <n>         Show only the most recent n sessions
   c-trail --sort <order>       Sort order: active (default), created, project
+  c-trail --project <name>     Filter by project name (last folder in path)
   c-trail --filter <text>      Filter by directory path or first message
   c-trail --help               Show this help
 
@@ -251,9 +252,11 @@ async function main() {
     return;
   }
 
-  const listOnly   = args.includes('--list');
-  const filterIdx  = args.indexOf('--filter');
-  const filterText = filterIdx !== -1 ? args[filterIdx + 1]?.toLowerCase() : null;
+  const listOnly    = args.includes('--list');
+  const filterIdx   = args.indexOf('--filter');
+  const filterText  = filterIdx !== -1 ? args[filterIdx + 1]?.toLowerCase() : null;
+  const projectIdx  = args.indexOf('--project');
+  const projectName = projectIdx !== -1 ? args[projectIdx + 1]?.toLowerCase() : null;
   const recentIdx  = args.indexOf('--recent');
   const recentN    = recentIdx !== -1 ? parseInt(args[recentIdx + 1], 10) : null;
   const sortIdx    = args.indexOf('--sort');
@@ -289,6 +292,14 @@ async function main() {
   if (recentN !== null) {
     sessions = sessions.slice(0, recentN);
     console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} most recent sessions.\n`);
+  }
+
+  if (projectName) {
+    sessions = sessions.filter(s =>
+      path.basename(s.cwd || '').toLowerCase() === projectName
+    );
+    if (sessions.length === 0) { console.log(`${YELLOW}No sessions found for project "${projectName}".${R}`); return; }
+    console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} sessions in project ${YELLOW}"${projectName}"${R}.\n`);
   }
 
   if (filterText) {

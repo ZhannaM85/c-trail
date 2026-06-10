@@ -13,7 +13,7 @@ Show the first few messages of a conversation before committing to resume — so
 `--filter` currently only matches the project directory path and the very first user message.
 It should search across all messages in a session.
 
-### `--project` flag
+### ✅ Done — `--project` flag
 Filter sessions by project name (last segment of the path) rather than the full path.
 Example: `c-trail --project my-app`
 
