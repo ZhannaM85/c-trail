@@ -47,11 +47,43 @@ Examples:
 Made by ZhannaM85 · https://github.com/ZhannaM85/c-trail
 `;
 
+// Prices per million tokens (approximate); used for cost estimates only.
+const MODEL_PRICING = [
+  { prefix: 'claude-opus',   input: 15,  output: 75,  cacheWrite: 18.75, cacheRead: 1.5  },
+  { prefix: 'claude-haiku',  input: 0.8, output: 4,   cacheWrite: 1,     cacheRead: 0.08 },
+  { prefix: 'claude-sonnet', input: 3,   output: 15,  cacheWrite: 3.75,  cacheRead: 0.3  },
+];
+const DEFAULT_PRICING = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 };
+
+function estimateCostUSD(model, input, output, cacheCreate, cacheRead) {
+  const p = MODEL_PRICING.find(t => model && model.startsWith(t.prefix)) || DEFAULT_PRICING;
+  return (input * p.input + output * p.output + cacheCreate * p.cacheWrite + cacheRead * p.cacheRead) / 1_000_000;
+}
+
+function formatTokens(n) {
+  if (!n) return '0 tok';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M tok`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K tok`;
+  return `${n} tok`;
+}
+
+function sessionStats(s, full = true) {
+  const msgs = `${s.messageCount} msg${s.messageCount !== 1 ? 's' : ''}`;
+  if (!full) return msgs;
+  const toks = s.totalTokens ? formatTokens(s.totalTokens) : null;
+  const cost = s.estimatedCostUSD >= 0.0001
+    ? `~$${s.estimatedCostUSD < 0.01 ? s.estimatedCostUSD.toFixed(4) : s.estimatedCostUSD.toFixed(2)}`
+    : null;
+  return [msgs, toks, cost].filter(Boolean).join(' · ');
+}
+
 function parseSession(jsonlPath) {
   try {
     const lines = fs.readFileSync(jsonlPath, 'utf8').split('\n');
     const info = { file: jsonlPath };
     const messageTexts = [];
+    let totalInput = 0, totalOutput = 0, totalCacheCreate = 0, totalCacheRead = 0;
+    let sessionModel = '';
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
@@ -65,6 +97,14 @@ function parseSession(jsonlPath) {
           if (!info.firstMessage && text) info.firstMessage = text;
           if (text) messageTexts.push(text);
         }
+        if (obj.type === 'assistant' && obj.message?.usage) {
+          const u = obj.message.usage;
+          totalInput       += u.input_tokens                 || 0;
+          totalOutput      += u.output_tokens                || 0;
+          totalCacheCreate += u.cache_creation_input_tokens  || 0;
+          totalCacheRead   += u.cache_read_input_tokens      || 0;
+          if (!sessionModel && obj.message.model) sessionModel = obj.message.model;
+        }
       } catch {}
     }
     info.allText = messageTexts.join('\n').toLowerCase();
@@ -72,6 +112,8 @@ function parseSession(jsonlPath) {
     info.lastActive = stat.mtime;
     info.fileSize = stat.size;
     info.messageCount = messageTexts.length;
+    info.totalTokens = totalInput + totalOutput;
+    info.estimatedCostUSD = estimateCostUSD(sessionModel, totalInput, totalOutput, totalCacheCreate, totalCacheRead);
     return info.sessionId ? info : null;
   } catch {
     return null;
@@ -108,13 +150,14 @@ function formatDate(iso) {
 function printAll(sessions, sortBy = 'active') {
   const label = sortBy === 'created' ? 'created' : 'active';
   sessions.forEach((s, i) => {
-    const num  = String(i + 1).padStart(String(sessions.length).length);
-    const date = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
-    const cwd  = s.cwd || '?';
-    const msg  = (s.firstMessage || '').slice(0, 100);
-    const pad  = ''.padStart(String(sessions.length).length + 2);
+    const num   = String(i + 1).padStart(String(sessions.length).length);
+    const date  = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
+    const cwd   = s.cwd || '?';
+    const msg   = (s.firstMessage || '').slice(0, 100);
+    const pad   = ''.padStart(String(sessions.length).length + 2);
+    const stats = sessionStats(s);
     console.log(`${GRAY}${num}.${R} ${DIM}${label} ${R}${CYAN}${date}${R}  ${YELLOW}${BOLD}${cwd}${R}`);
-    console.log(`${pad}  ${GRAY}"${msg}"${R}`);
+    console.log(`${pad}  ${GRAY}"${msg}"${R}  ${DIM}[${stats}]${R}`);
     console.log();
   });
 }
@@ -165,11 +208,13 @@ function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active') 
     const cwd  = s.cwd || '?';
 
     if (isSelected) {
+      const stats = sessionStats(s);
       process.stdout.write(`${GREEN}${BOLD} ❯ ${R}${DIM}[${R}${CYAN}${BOLD}${date}${R}${DIM}]${R}  ${YELLOW}${BOLD}${cwd}${R}\n`);
-      process.stdout.write(`${GREEN}     "${msg}"${R}\n`);
+      process.stdout.write(`${GREEN}     "${msg}"  ${R}${DIM}[${stats}]${R}\n`);
     } else {
+      const stats = sessionStats(s, false);
       process.stdout.write(`${DIM}   [${date}]  ${cwd}${R}\n`);
-      process.stdout.write(`${GRAY}   "${msg}"${R}\n`);
+      process.stdout.write(`${GRAY}   "${msg}"  [${stats}]${R}\n`);
     }
   }
 

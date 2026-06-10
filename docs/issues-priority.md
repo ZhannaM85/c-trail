@@ -29,7 +29,7 @@ Issues grouped by implementation tier. Work top-to-bottom within each tier.
 
 | # | Issue | Notes |
 |---|-------|-------|
-| [#5](https://github.com/ZhannaM85/c-trail/issues/5) | feat: session stats in list view | Message count, cost, token count from `.jsonl` files |
+| ~~[#5](https://github.com/ZhannaM85/c-trail/issues/5)~~ | ~~feat: session stats in list view~~ | ~~Message count, cost, token count from `.jsonl` files~~ |
 
 ---
 
