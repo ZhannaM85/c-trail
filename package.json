@@ -1,0 +1,26 @@
+{
+  "name": "c-trail",
+  "version": "0.1.0",
+  "description": "Browse and resume Claude Code sessions across all your projects",
+  "main": "index.js",
+  "bin": {
+    "c-trail": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai",
+    "cli",
+    "session",
+    "resume",
+    "history"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14"
+  }
+}
