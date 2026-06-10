@@ -21,7 +21,7 @@ Issues grouped by implementation tier. Work top-to-bottom within each tier.
 | # | Issue | Notes |
 |---|-------|-------|
 | ~~[#3](https://github.com/ZhannaM85/c-trail/issues/3)~~ | ~~feat: full-text search across all messages~~ | ~~`--filter` currently only matches directory and first message~~ |
-| [#6](https://github.com/ZhannaM85/c-trail/issues/6) | feat: direct resume by session ID | `c-trail resume <id>` — skip the picker entirely |
+| ~~[#6](https://github.com/ZhannaM85/c-trail/issues/6)~~ | ~~feat: direct resume by session ID~~ | ~~`c-trail resume <id>` — skip the picker entirely~~ |
 
 ---
 
