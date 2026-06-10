@@ -10,11 +10,13 @@ const { spawnSync } = require('child_process');
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 const PAGE_SIZE = 8;
 
-const R    = '\x1B[0m';
-const BOLD = '\x1B[1m';
-const DIM  = '\x1B[2m';
-const GREEN = '\x1B[32m';
-const CYAN  = '\x1B[36m';
+const R      = '\x1B[0m';
+const BOLD   = '\x1B[1m';
+const DIM    = '\x1B[2m';
+const GREEN  = '\x1B[32m';
+const CYAN   = '\x1B[36m';
+const YELLOW = '\x1B[33m';
+const GRAY   = '\x1B[90m';
 
 const HELP = `
 c-trail 🐾 — browse and resume Claude Code sessions across all projects
@@ -92,9 +94,13 @@ function formatDate(iso) {
 
 function printAll(sessions) {
   sessions.forEach((s, i) => {
-    const num = String(i + 1).padStart(String(sessions.length).length);
-    console.log(`${num}. [${formatDate(s.timestamp)}]  ${s.cwd || '?'}`);
-    console.log(`${''.padStart(String(sessions.length).length + 2)}  "${(s.firstMessage || '').slice(0, 100)}"`);
+    const num  = String(i + 1).padStart(String(sessions.length).length);
+    const date = formatDate(s.timestamp);
+    const cwd  = s.cwd || '?';
+    const msg  = (s.firstMessage || '').slice(0, 100);
+    const pad  = ''.padStart(String(sessions.length).length + 2);
+    console.log(`${GRAY}${num}.${R} ${DIM}[${R}${CYAN}${date}${R}${DIM}]${R}  ${YELLOW}${BOLD}${cwd}${R}`);
+    console.log(`${pad}  ${GRAY}"${msg}"${R}`);
     console.log();
   });
 }
@@ -116,11 +122,11 @@ function renderPicker(sessions, selected, offset, prevLines) {
     const cwd  = s.cwd || '?';
 
     if (isSelected) {
-      process.stdout.write(`${GREEN}${BOLD} ❯ [${date}]  ${cwd}${R}\n`);
+      process.stdout.write(`${GREEN}${BOLD} ❯ ${R}${DIM}[${R}${CYAN}${BOLD}${date}${R}${DIM}]${R}  ${YELLOW}${BOLD}${cwd}${R}\n`);
       process.stdout.write(`${GREEN}     "${msg}"${R}\n`);
     } else {
       process.stdout.write(`${DIM}   [${date}]  ${cwd}${R}\n`);
-      process.stdout.write(`${DIM}   "${msg}"${R}\n`);
+      process.stdout.write(`${GRAY}   "${msg}"${R}\n`);
     }
   }
 
@@ -202,17 +208,18 @@ async function main() {
   const filterIdx = args.indexOf('--filter');
   const filterText = filterIdx !== -1 ? args[filterIdx + 1]?.toLowerCase() : null;
 
-  process.stdout.write('Scanning sessions... ');
+  process.stdout.write(`${DIM}Scanning sessions...${R} `);
   let sessions = getAllSessions();
-  console.log(`found ${sessions.length} across ${new Set(sessions.map(s => s.cwd)).size} projects.\n`);
+  const projectCount = new Set(sessions.map(s => s.cwd)).size;
+  console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
 
   if (filterText) {
     sessions = sessions.filter(s =>
       s.cwd?.toLowerCase().includes(filterText) ||
       s.firstMessage?.toLowerCase().includes(filterText)
     );
-    if (sessions.length === 0) { console.log(`No sessions matching "${filterText}".`); return; }
-    console.log(`Showing ${sessions.length} matching "${filterText}".\n`);
+    if (sessions.length === 0) { console.log(`${YELLOW}No sessions matching "${filterText}".${R}`); return; }
+    console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} sessions matching ${YELLOW}"${filterText}"${R}.\n`);
   }
 
   if (sessions.length === 0) { console.log('No sessions found.'); return; }
@@ -226,7 +233,7 @@ async function main() {
   if (!chosen) { console.log('Cancelled.'); return; }
 
   const projectDir = chosen.cwd && fs.existsSync(chosen.cwd) ? chosen.cwd : process.cwd();
-  console.log(`Resuming in ${projectDir} ...`);
+  console.log(`${DIM}Resuming in${R} ${YELLOW}${projectDir}${R} ${DIM}...${R}`);
 
   spawnSync('claude', ['--resume', chosen.sessionId], {
     cwd: projectDir,
