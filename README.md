@@ -25,28 +25,42 @@ Requires Node.js 14+ and Claude Code CLI.
 ## Usage
 
 ```bash
-c-trail                        # Interactive picker — choose a session to resume
-c-trail --list                 # List all sessions without resuming
-c-trail --filter my-project    # Filter by directory path or first message
+c-trail                          # Interactive picker (arrow keys) — choose a session to resume
+c-trail --list                   # Print all sessions and exit
+c-trail --recent 10              # Show only the 10 most recent sessions
+c-trail --filter my-project      # Filter by directory path or first message
 c-trail --filter "auth bug"
+c-trail --sort active            # Sort by last activity (default)
+c-trail --sort created           # Sort by when the session was started
+c-trail --sort project           # Sort alphabetically by project path
 c-trail --help
 ```
+
+Flags can be combined freely:
+
+```bash
+c-trail --recent 20 --filter my-app --sort created
+```
+
+### Interactive picker
+
+Navigate with ↑↓, press Enter to resume, q to quit. Sessions are sorted by last activity by default so your most recent conversations are always at the top.
 
 ### Example output
 
 ```
 Scanning sessions... found 112 across 8 projects.
 
-  1. [10 Jun 2026 22:54]  /Users/you/projects/my-app
+ ❯ [10 Jun 2026 22:54]  /Users/you/projects/my-app
      "Can you help me refactor the auth middleware?"
 
-  2. [10 Jun 2026 11:08]  /Users/you/projects/website
+   [10 Jun 2026 11:08]  /Users/you/projects/website
      "The deployment is failing, here's the error..."
 
-Enter number to resume (or q to quit):
+↑↓ navigate · enter resume · q quit    1/112
 ```
 
-Pick a number — `c-trail` resumes that session in its original project directory automatically.
+`c-trail` resumes the session in its original project directory automatically.
 
 ---
 
