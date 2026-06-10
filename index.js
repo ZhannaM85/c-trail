@@ -23,7 +23,7 @@ const HELP = `
 c-trail 🐾 — browse and resume Claude Code sessions across all projects
 
 Usage:
-  c-trail                      Interactive picker (arrow keys)
+  c-trail                      Interactive picker (fzf if available, else arrow keys)
   c-trail resume <id>          Resume a specific session by ID (skip picker)
   c-trail export <id>          Export a session to Markdown (stdout)
   c-trail export <id> --output <file>  Save exported Markdown to a file
@@ -32,6 +32,7 @@ Usage:
   c-trail --sort <order>       Sort order: active (default), created, project, messages, size
   c-trail --project <name>     Filter by project name (last folder in path)
   c-trail --filter <text>      Filter by directory path or any message
+  c-trail --no-fzf             Disable fzf even if it is installed
   c-trail --help               Show this help
 
 Keys (interactive mode):
@@ -352,6 +353,75 @@ async function pickNumbered(sessions) {
   });
 }
 
+function fzfAvailable() {
+  try {
+    return spawnSync('fzf', ['--version'], { stdio: 'pipe' }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+function buildFzfPreview(session) {
+  const out = [];
+  out.push(`Session: ${session.sessionId}`);
+  out.push(`Project: ${session.cwd || '?'}`);
+  out.push(`Active:  ${formatDate(session.lastActive)}`);
+  out.push(`Stats:   ${sessionStats(session)}`);
+  out.push('');
+  for (const m of loadPreview(session)) {
+    const label = m.role === 'user' ? 'You' : 'Claude';
+    out.push(`${label}: ${m.text.slice(0, 120)}`);
+    out.push('');
+  }
+  return out.join('\n');
+}
+
+function pickWithFzf(sessions, sortBy = 'active') {
+  const pid        = process.pid;
+  const scriptPath = path.join(os.tmpdir(), `c-trail-fzf-script-${pid}.js`);
+  const dataPath   = path.join(os.tmpdir(), `c-trail-fzf-data-${pid}.json`);
+
+  const previewData = {};
+  for (const s of sessions) previewData[s.sessionId] = buildFzfPreview(s);
+
+  // Tiny helper script so the preview command avoids inline quoting pitfalls
+  fs.writeFileSync(scriptPath,
+    `var d=JSON.parse(require('fs').readFileSync(process.argv[2],'utf8'));` +
+    `process.stdout.write(d[process.argv[1]]||'(no preview)');`
+  );
+  fs.writeFileSync(dataPath, JSON.stringify(previewData));
+
+  const lines = sessions.map(s => {
+    const date  = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
+    const msg   = (s.firstMessage || '(no message)').slice(0, 60);
+    const cwd   = s.cwd || '?';
+    // Format: sessionId<TAB>display-line  (fzf shows only field 2 via --with-nth)
+    return `${s.sessionId}\t${date}  ${cwd}  "${msg}"  [${sessionStats(s, false)}]`;
+  }).join('\n');
+
+  try {
+    const result = spawnSync('fzf', [
+      '--delimiter', '\t',
+      '--with-nth', '2',
+      '--no-sort',
+      '--ansi',
+      '--height', '60%',
+      '--layout', 'reverse',
+      '--border',
+      '--prompt', 'c-trail> ',
+      '--preview', `node "${scriptPath}" {1} "${dataPath}"`,
+      '--preview-window', 'right:40%:wrap',
+    ], { input: lines, encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'] });
+
+    if (result.status !== 0 || !result.stdout.trim()) return null;
+    const id = result.stdout.trim().split('\t')[0];
+    return sessions.find(s => s.sessionId === id) || null;
+  } finally {
+    try { fs.unlinkSync(scriptPath); } catch {}
+    try { fs.unlinkSync(dataPath); } catch {}
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
 
@@ -417,6 +487,7 @@ async function main() {
   }
 
   const listOnly    = args.includes('--list');
+  const noFzf       = args.includes('--no-fzf');
   const filterIdx   = args.indexOf('--filter');
   const filterText  = filterIdx !== -1 ? args[filterIdx + 1]?.toLowerCase() : null;
   const projectIdx  = args.indexOf('--project');
@@ -483,9 +554,15 @@ async function main() {
 
   if (listOnly) { printAll(sessions, sortBy); return; }
 
-  const chosen = process.stdin.isTTY
-    ? await pickInteractive(sessions, sortBy)
-    : (printAll(sessions, sortBy), await pickNumbered(sessions));
+  let chosen;
+  if (!process.stdin.isTTY) {
+    printAll(sessions, sortBy);
+    chosen = await pickNumbered(sessions);
+  } else if (!noFzf && fzfAvailable()) {
+    chosen = pickWithFzf(sessions, sortBy);
+  } else {
+    chosen = await pickInteractive(sessions, sortBy);
+  }
 
   if (!chosen) { console.log('Cancelled.'); return; }
 
