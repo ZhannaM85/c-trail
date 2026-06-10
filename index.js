@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // c-trail — browse and resume Claude Code sessions across all projects
-// Usage: c-trail [--list] [--filter <text>] [--help]
 
 const fs = require('fs');
 const path = require('path');
@@ -9,15 +8,27 @@ const os = require('os');
 const { spawnSync } = require('child_process');
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
+const PAGE_SIZE = 8;
+
+const R    = '\x1B[0m';
+const BOLD = '\x1B[1m';
+const DIM  = '\x1B[2m';
+const GREEN = '\x1B[32m';
+const CYAN  = '\x1B[36m';
 
 const HELP = `
 c-trail 🐾 — browse and resume Claude Code sessions across all projects
 
 Usage:
-  c-trail                      Interactive picker — choose a session to resume
-  c-trail --list               List all sessions without resuming
-  c-trail --filter <text>      Filter sessions by directory path or first message
+  c-trail                      Interactive picker (arrow keys)
+  c-trail --list               Print all sessions and exit
+  c-trail --filter <text>      Filter by directory path or first message
   c-trail --help               Show this help
+
+Keys (interactive mode):
+  ↑ ↓                          Navigate
+  Enter                        Resume selected session
+  q / Ctrl+C                   Quit
 
 Examples:
   c-trail
@@ -32,7 +43,6 @@ function parseSession(jsonlPath) {
   try {
     const lines = fs.readFileSync(jsonlPath, 'utf8').split('\n');
     const info = { file: jsonlPath };
-
     for (const line of lines.slice(0, 40)) {
       if (!line.trim()) continue;
       try {
@@ -47,7 +57,6 @@ function parseSession(jsonlPath) {
         if (info.sessionId && info.cwd && info.firstMessage) break;
       } catch {}
     }
-
     return info.sessionId ? info : null;
   } catch {
     return null;
@@ -59,9 +68,7 @@ function getAllSessions() {
     console.error('No Claude projects directory found at', PROJECTS_DIR);
     process.exit(1);
   }
-
   const sessions = [];
-
   for (const entry of fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const dir = path.join(PROJECTS_DIR, entry.name);
@@ -73,7 +80,6 @@ function getAllSessions() {
       }
     } catch {}
   }
-
   return sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
@@ -84,16 +90,96 @@ function formatDate(iso) {
     + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function printSession(i, s, total) {
-  const num = String(i + 1).padStart(String(total).length);
-  const date = formatDate(s.timestamp);
-  const cwd = s.cwd || '?';
-  const msg = (s.firstMessage || '(no message)').slice(0, 100);
-  console.log(`${num}. [${date}]  ${cwd}`);
-  console.log(`${''.padStart(String(total).length + 2)}  "${msg}"`);
+function printAll(sessions) {
+  sessions.forEach((s, i) => {
+    const num = String(i + 1).padStart(String(sessions.length).length);
+    console.log(`${num}. [${formatDate(s.timestamp)}]  ${s.cwd || '?'}`);
+    console.log(`${''.padStart(String(sessions.length).length + 2)}  "${(s.firstMessage || '').slice(0, 100)}"`);
+    console.log();
+  });
 }
 
-async function pick(sessions) {
+// Renders the visible window; returns the number of \n-terminated lines written
+// so the next call knows how far to move the cursor back up.
+function renderPicker(sessions, selected, offset, prevLines) {
+  const visible = Math.min(PAGE_SIZE, sessions.length - offset);
+
+  if (prevLines > 0) {
+    process.stdout.write(`\r\x1B[${prevLines}A\x1B[0J`);
+  }
+
+  for (let i = offset; i < offset + visible; i++) {
+    const s = sessions[i];
+    const isSelected = i === selected;
+    const date = formatDate(s.timestamp);
+    const msg  = (s.firstMessage || '(no message)').slice(0, 70);
+    const cwd  = s.cwd || '?';
+
+    if (isSelected) {
+      process.stdout.write(`${GREEN}${BOLD} ❯ [${date}]  ${cwd}${R}\n`);
+      process.stdout.write(`${GREEN}     "${msg}"${R}\n`);
+    } else {
+      process.stdout.write(`${DIM}   [${date}]  ${cwd}${R}\n`);
+      process.stdout.write(`${DIM}   "${msg}"${R}\n`);
+    }
+  }
+
+  const counter = `${CYAN}${selected + 1}${R}${DIM}/${sessions.length}${R}`;
+  process.stdout.write(`\n${DIM}↑↓ navigate · enter resume · q quit    ${counter}${R}`);
+
+  // visible*2 session lines + 1 blank line before hint, all ended with \n
+  return visible * 2 + 1;
+}
+
+async function pickInteractive(sessions) {
+  return new Promise((resolve) => {
+    let selected = 0;
+    let offset   = 0;
+    let prevLines = 0;
+
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+
+    prevLines = renderPicker(sessions, selected, offset, prevLines);
+
+    const cleanup = (result) => {
+      process.stdin.setRawMode(false);
+      process.stdin.removeAllListeners('keypress');
+      process.stdin.pause();
+      process.stdout.write('\n');
+      resolve(result);
+    };
+
+    process.stdin.on('keypress', (_, key) => {
+      if (!key) return;
+
+      if ((key.ctrl && key.name === 'c') || key.name === 'q') {
+        cleanup(null);
+        return;
+      }
+
+      if (key.name === 'return') {
+        cleanup(sessions[selected]);
+        return;
+      }
+
+      if (key.name === 'up' && selected > 0) {
+        selected--;
+        if (selected < offset) offset = selected;
+      } else if (key.name === 'down' && selected < sessions.length - 1) {
+        selected++;
+        if (selected >= offset + PAGE_SIZE) offset = selected - PAGE_SIZE + 1;
+      } else {
+        return;
+      }
+
+      prevLines = renderPicker(sessions, selected, offset, prevLines);
+    });
+  });
+}
+
+// Fallback when stdout is not a TTY (piped output)
+async function pickNumbered(sessions) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => {
     rl.question('\nEnter number to resume (or q to quit): ', answer => {
@@ -112,7 +198,7 @@ async function main() {
     return;
   }
 
-  const listOnly = args.includes('--list');
+  const listOnly  = args.includes('--list');
   const filterIdx = args.indexOf('--filter');
   const filterText = filterIdx !== -1 ? args[filterIdx + 1]?.toLowerCase() : null;
 
@@ -125,26 +211,22 @@ async function main() {
       s.cwd?.toLowerCase().includes(filterText) ||
       s.firstMessage?.toLowerCase().includes(filterText)
     );
-    console.log(`Filtered to ${sessions.length} matching "${filterText}".\n`);
+    if (sessions.length === 0) { console.log(`No sessions matching "${filterText}".`); return; }
+    console.log(`Showing ${sessions.length} matching "${filterText}".\n`);
   }
 
-  if (sessions.length === 0) {
-    console.log('No sessions found.');
-    return;
-  }
+  if (sessions.length === 0) { console.log('No sessions found.'); return; }
 
-  sessions.forEach((s, i) => {
-    printSession(i, s, sessions.length);
-    console.log();
-  });
+  if (listOnly) { printAll(sessions); return; }
 
-  if (listOnly) return;
+  const chosen = process.stdin.isTTY
+    ? await pickInteractive(sessions)
+    : (printAll(sessions), await pickNumbered(sessions));
 
-  const chosen = await pick(sessions);
   if (!chosen) { console.log('Cancelled.'); return; }
 
   const projectDir = chosen.cwd && fs.existsSync(chosen.cwd) ? chosen.cwd : process.cwd();
-  console.log(`\nResuming in ${projectDir} ...`);
+  console.log(`Resuming in ${projectDir} ...`);
 
   spawnSync('claude', ['--resume', chosen.sessionId], {
     cwd: projectDir,
