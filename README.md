@@ -7,6 +7,8 @@
 
 Claude Code's built-in `--resume` only shows sessions for the directory you're currently in. `c-trail` gives you a global view: every session, every project, in one list.
 
+![demo](https://github.com/user-attachments/assets/64240f85-c9c9-470c-a73a-625f215d2b73)
+
 ---
 
 ## How it works
