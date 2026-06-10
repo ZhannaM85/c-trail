@@ -24,6 +24,7 @@ c-trail 🐾 — browse and resume Claude Code sessions across all projects
 
 Usage:
   c-trail                      Interactive picker (arrow keys)
+  c-trail resume <id>          Resume a specific session by ID (skip picker)
   c-trail --list               Print all sessions and exit
   c-trail --recent <n>         Show only the most recent n sessions
   c-trail --sort <order>       Sort order: active (default), created, project, messages, size
@@ -38,6 +39,7 @@ Keys (interactive mode):
 
 Examples:
   c-trail
+  c-trail resume abc123
   c-trail --list
   c-trail --filter my-project
   c-trail --filter "auth middleware"
@@ -255,6 +257,31 @@ async function main() {
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(HELP);
+    return;
+  }
+
+  if (args[0] === 'resume') {
+    const targetId = args[1];
+    if (!targetId) {
+      console.error(`${YELLOW}Usage: c-trail resume <session-id>${R}`);
+      process.exit(1);
+    }
+    process.stdout.write(`${DIM}Scanning sessions...${R} `);
+    const sessions = getAllSessions();
+    const projectCount = new Set(sessions.map(s => s.cwd)).size;
+    console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
+    const chosen = sessions.find(s => s.sessionId === targetId);
+    if (!chosen) {
+      console.error(`${YELLOW}No session found with ID "${targetId}".${R}`);
+      process.exit(1);
+    }
+    const projectDir = chosen.cwd && fs.existsSync(chosen.cwd) ? chosen.cwd : process.cwd();
+    console.log(`${DIM}Resuming in${R} ${YELLOW}${projectDir}${R} ${DIM}...${R}`);
+    spawnSync('claude', ['--resume', chosen.sessionId], {
+      cwd: projectDir,
+      stdio: 'inherit',
+      shell: true,
+    });
     return;
   }
 
