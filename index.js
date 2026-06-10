@@ -26,7 +26,7 @@ Usage:
   c-trail                      Interactive picker (arrow keys)
   c-trail --list               Print all sessions and exit
   c-trail --recent <n>         Show only the most recent n sessions
-  c-trail --sort <order>       Sort order: active (default), created, project
+  c-trail --sort <order>       Sort order: active (default), created, project, messages, size
   c-trail --project <name>     Filter by project name (last folder in path)
   c-trail --filter <text>      Filter by directory path or first message
   c-trail --help               Show this help
@@ -63,7 +63,10 @@ function parseSession(jsonlPath) {
         if (info.sessionId && info.cwd && info.firstMessage) break;
       } catch {}
     }
-    info.lastActive = fs.statSync(jsonlPath).mtime;
+    const stat = fs.statSync(jsonlPath);
+    info.lastActive = stat.mtime;
+    info.fileSize = stat.size;
+    info.messageCount = lines.filter(l => l.includes('"type":"user"')).length;
     return info.sessionId ? info : null;
   } catch {
     return null;
@@ -262,7 +265,7 @@ async function main() {
   const sortIdx    = args.indexOf('--sort');
   const sortBy     = sortIdx !== -1 ? args[sortIdx + 1] : 'active';
 
-  const SORT_OPTIONS = ['active', 'created', 'project'];
+  const SORT_OPTIONS = ['active', 'created', 'project', 'messages', 'size'];
   if (!SORT_OPTIONS.includes(sortBy)) {
     console.error(`${YELLOW}--sort must be one of: ${SORT_OPTIONS.join(', ')}${R}`);
     process.exit(1);
@@ -282,6 +285,10 @@ async function main() {
     sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   } else if (sortBy === 'project') {
     sessions.sort((a, b) => (a.cwd || '').localeCompare(b.cwd || ''));
+  } else if (sortBy === 'messages') {
+    sessions.sort((a, b) => b.messageCount - a.messageCount);
+  } else if (sortBy === 'size') {
+    sessions.sort((a, b) => b.fileSize - a.fileSize);
   }
   // 'active' is the default sort from getAllSessions — no re-sort needed
 
