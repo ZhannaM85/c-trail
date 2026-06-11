@@ -25,13 +25,14 @@ c-trail 🐾 — browse and resume Claude Code sessions across all projects
 
 Usage:
   c-trail                      Interactive picker (fzf if available, else arrow keys)
-  c-trail resume <id>          Resume a specific session by ID (skip picker)
-  c-trail export <id>          Export a session to Markdown (stdout)
-  c-trail export <id> --output <file>  Save exported Markdown to a file
-  c-trail delete <id>          Delete a session file (asks for confirmation)
+  c-trail resume <n>           Resume session by number from --list (skip picker)
+  c-trail rename <n> "title"   Rename session by number from --list
+  c-trail export <n>           Export a session to Markdown (stdout)
+  c-trail export <n> --output <file>  Save exported Markdown to a file
+  c-trail delete <n>           Delete a session file (asks for confirmation)
   c-trail stats                Print aggregate usage summary across all sessions
   c-trail stats --top <n>      Show top n projects in the breakdown (default: 10)
-  c-trail --list               Print all sessions and exit
+  c-trail --list               Print all sessions with numbers and exit
   c-trail --recent <n>         Show only the most recent n sessions
   c-trail --sort <order>       Sort order: active (default), created, project, messages, size
   c-trail --project <name>     Filter by project name (last folder in path)
@@ -45,19 +46,21 @@ Keys (interactive mode):
   ↑ ↓                          Navigate
   Enter                        Resume selected session
   /                            Enter search mode (filter sessions)
-  Backspace                    Remove last search character
-  Escape                       Clear search / exit search mode
+  r                            Rename selected session
+  Backspace                    Remove last search/rename character
+  Escape                       Clear search / cancel rename / exit mode
   q / Ctrl+C                   Quit
 
 Examples:
   c-trail
-  c-trail resume abc123
-  c-trail export abc123
-  c-trail export abc123 --output session.md
-  c-trail delete abc123
+  c-trail --list
+  c-trail resume 3
+  c-trail rename 3 "My session title"
+  c-trail export 3
+  c-trail export 3 --output session.md
+  c-trail delete 3
   c-trail stats
   c-trail stats --top 5
-  c-trail --list
   c-trail --filter my-project
   c-trail --filter "auth middleware"
   c-trail --since 2026-06-01
@@ -316,6 +319,20 @@ function loadPreview(session) {
 }
 
 /**
+ * Writes a custom-title entry to the session's JSONL file and updates the in-memory object.
+ * This is the same format Claude Code uses for /rename, so the name shows everywhere.
+ *
+ * @param {Session} session
+ * @param {string}  newTitle
+ */
+function renameSession(session, newTitle) {
+  const entry = JSON.stringify({ type: 'custom-title', customTitle: newTitle, sessionId: session.sessionId });
+  fs.appendFileSync(session.file, '\n' + entry, 'utf8');
+  session.customTitle = newTitle;
+  previewCache.delete(session.sessionId);
+}
+
+/**
  * Extracts plain text from a Claude message content field.
  *
  * The content field can be either:
@@ -407,7 +424,7 @@ function exportToMarkdown(session) {
  * @param {string}    [searchQuery='']      - Current inline search query
  * @returns {number} The number of lines written, to be passed as prevLines on the next call
  */
-function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active', searchMode = false, searchQuery = '') {
+function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active', searchMode = false, searchQuery = '', renameMode = false, renameBuffer = '') {
   if (prevLines > 0) {
     // Move cursor back to the top of what we drew, then clear to end of screen
     process.stdout.write(`\r\x1B[${prevLines}A\x1B[0J`);
@@ -459,10 +476,12 @@ function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active', 
     ? `${CYAN}${selected + 1}${R}${DIM}/${sessions.length}${R}`
     : `${DIM}0/0${R}`;
 
-  if (searchMode) {
+  if (renameMode) {
+    process.stdout.write(`\n${CYAN}rename:${R} ${renameBuffer}${DIM}█${R}  ${DIM}esc cancel · enter confirm${R}  ${counter}`);
+  } else if (searchMode) {
     process.stdout.write(`\n${CYAN}/${R}${searchQuery}${DIM}█${R}  ${DIM}esc clear · ↑↓ navigate · enter confirm${R}  ${counter}`);
   } else {
-    process.stdout.write(`\n${DIM}↑↓ navigate · enter resume · / search · q quit    ${counter}${R}`);
+    process.stdout.write(`\n${DIM}↑↓ navigate · enter resume · / search · r rename · q quit    ${counter}${R}`);
   }
 
   if (sessions.length === 0) {
@@ -488,6 +507,8 @@ async function pickInteractive(sessions, sortBy = 'active') {
     let prevLines = 0;
     let searchMode = false;
     let searchQuery = '';
+    let renameMode = false;
+    let renameBuffer = '';
     let filtered = sessions;
 
     function applyFilter() {
@@ -503,7 +524,7 @@ async function pickInteractive(sessions, sortBy = 'active') {
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
 
-    prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+    prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
 
     const cleanup = (result) => {
       process.stdin.setRawMode(false);
@@ -521,6 +542,37 @@ async function pickInteractive(sessions, sortBy = 'active') {
         return;
       }
 
+      if (renameMode) {
+        if (key.name === 'escape') {
+          renameMode = false;
+          renameBuffer = '';
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
+          return;
+        }
+
+        if (key.name === 'return') {
+          if (renameBuffer.trim() && filtered.length > 0) {
+            renameSession(filtered[selected], renameBuffer.trim());
+          }
+          renameMode = false;
+          renameBuffer = '';
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
+          return;
+        }
+
+        if (key.name === 'backspace') {
+          renameBuffer = renameBuffer.slice(0, -1);
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
+          return;
+        }
+
+        if (ch && !key.ctrl && !key.meta && ch.length === 1) {
+          renameBuffer += ch;
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
+        }
+        return;
+      }
+
       if (searchMode) {
         if (key.name === 'escape') {
           searchQuery = '';
@@ -528,13 +580,13 @@ async function pickInteractive(sessions, sortBy = 'active') {
           selected = 0;
           offset = 0;
           filtered = applyFilter();
-          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
           return;
         }
 
         if (key.name === 'return') {
           searchMode = false;
-          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
           return;
         }
 
@@ -543,7 +595,7 @@ async function pickInteractive(sessions, sortBy = 'active') {
           selected = 0;
           offset = 0;
           filtered = applyFilter();
-          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
           return;
         }
 
@@ -551,7 +603,7 @@ async function pickInteractive(sessions, sortBy = 'active') {
           if (selected > 0) {
             selected--;
             if (selected < offset) offset = selected;
-            prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+            prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
           }
           return;
         }
@@ -560,7 +612,7 @@ async function pickInteractive(sessions, sortBy = 'active') {
           if (filtered.length > 0 && selected < filtered.length - 1) {
             selected++;
             if (selected >= offset + PAGE_SIZE) offset = selected - PAGE_SIZE + 1;
-            prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+            prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
           }
           return;
         }
@@ -570,7 +622,7 @@ async function pickInteractive(sessions, sortBy = 'active') {
           selected = 0;
           offset = 0;
           filtered = applyFilter();
-          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+          prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
         }
         return;
       }
@@ -588,7 +640,14 @@ async function pickInteractive(sessions, sortBy = 'active') {
 
       if (ch === '/') {
         searchMode = true;
-        prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+        prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
+        return;
+      }
+
+      if (ch === 'r' && filtered.length > 0) {
+        renameMode = true;
+        renameBuffer = filtered[selected].customTitle || '';
+        prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
         return;
       }
 
@@ -602,7 +661,7 @@ async function pickInteractive(sessions, sortBy = 'active') {
         return;
       }
 
-      prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery);
+      prevLines = renderPicker(filtered, selected, offset, prevLines, sortBy, searchMode, searchQuery, renameMode, renameBuffer);
     });
   });
 }
@@ -797,16 +856,19 @@ async function main() {
   if (args[0] === 'resume') {
     const targetId = args[1];
     if (!targetId) {
-      console.error(`${YELLOW}Usage: c-trail resume <session-id>${R}`);
+      console.error(`${YELLOW}Usage: c-trail resume <number>${R}`);
       process.exit(1);
     }
     process.stdout.write(`${DIM}Scanning sessions...${R} `);
     const sessions = getAllSessions();
     const projectCount = new Set(sessions.map(s => s.cwd)).size;
     console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
-    const chosen = sessions.find(s => s.sessionId === targetId);
+    const _n = parseInt(targetId, 10);
+    const chosen = (!isNaN(_n) && _n >= 1 && _n <= sessions.length)
+      ? sessions[_n - 1]
+      : sessions.find(s => s.sessionId === targetId);
     if (!chosen) {
-      console.error(`${YELLOW}No session found with ID "${targetId}".${R}`);
+      console.error(`${YELLOW}No session found for "${targetId}". Use --list to see session numbers.${R}`);
       process.exit(1);
     }
     const projectDir = chosen.cwd && fs.existsSync(chosen.cwd) ? chosen.cwd : process.cwd();
@@ -823,7 +885,7 @@ async function main() {
   if (args[0] === 'export') {
     const targetId = args[1];
     if (!targetId) {
-      console.error(`${YELLOW}Usage: c-trail export <session-id> [--output <file>]${R}`);
+      console.error(`${YELLOW}Usage: c-trail export <number> [--output <file>]${R}`);
       process.exit(1);
     }
     const outputIdx  = args.indexOf('--output');
@@ -834,9 +896,12 @@ async function main() {
     const projectCount = new Set(sessions.map(s => s.cwd)).size;
     console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
 
-    const chosen = sessions.find(s => s.sessionId === targetId);
+    const _n = parseInt(targetId, 10);
+    const chosen = (!isNaN(_n) && _n >= 1 && _n <= sessions.length)
+      ? sessions[_n - 1]
+      : sessions.find(s => s.sessionId === targetId);
     if (!chosen) {
-      console.error(`${YELLOW}No session found with ID "${targetId}".${R}`);
+      console.error(`${YELLOW}No session found for "${targetId}". Use --list to see session numbers.${R}`);
       process.exit(1);
     }
 
@@ -851,11 +916,44 @@ async function main() {
     return;
   }
 
+  // c-trail rename <n|id> "title" — give a session a human-readable name
+  if (args[0] === 'rename') {
+    if (args.length < 3) {
+      console.error(`${YELLOW}Usage: c-trail rename <number|session-id> "New title"${R}`);
+      process.exit(1);
+    }
+    const identifier = args[1];
+    const newTitle   = args.slice(2).join(' ');
+
+    process.stdout.write(`${DIM}Scanning sessions...${R} `);
+    const sessions = getAllSessions();
+    const projectCount = new Set(sessions.map(s => s.cwd)).size;
+    console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
+
+    const n = parseInt(identifier, 10);
+    const chosen = (!isNaN(n) && n >= 1 && n <= sessions.length)
+      ? sessions[n - 1]
+      : sessions.find(s => s.sessionId === identifier);
+
+    if (!chosen) {
+      console.error(`${YELLOW}No session found for "${identifier}". Use --list to see session numbers.${R}`);
+      process.exit(1);
+    }
+
+    const oldTitle = chosen.customTitle || '(none)';
+    renameSession(chosen, newTitle);
+
+    console.log(`${GREEN}Renamed:${R}`);
+    console.log(`  ${DIM}From:${R} ${GRAY}${oldTitle}${R}`);
+    console.log(`  ${DIM}To:${R}   ${CYAN}${newTitle}${R}`);
+    return;
+  }
+
   // c-trail delete <id> — remove a session's .jsonl file after confirmation
   if (args[0] === 'delete') {
     const targetId = args[1];
     if (!targetId) {
-      console.error(`${YELLOW}Usage: c-trail delete <session-id>${R}`);
+      console.error(`${YELLOW}Usage: c-trail delete <number>${R}`);
       process.exit(1);
     }
     process.stdout.write(`${DIM}Scanning sessions...${R} `);
@@ -863,9 +961,12 @@ async function main() {
     const projectCount = new Set(sessions.map(s => s.cwd)).size;
     console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
 
-    const chosen = sessions.find(s => s.sessionId === targetId);
+    const _n = parseInt(targetId, 10);
+    const chosen = (!isNaN(_n) && _n >= 1 && _n <= sessions.length)
+      ? sessions[_n - 1]
+      : sessions.find(s => s.sessionId === targetId);
     if (!chosen) {
-      console.error(`${YELLOW}No session found with ID "${targetId}".${R}`);
+      console.error(`${YELLOW}No session found for "${targetId}". Use --list to see session numbers.${R}`);
       process.exit(1);
     }
 
