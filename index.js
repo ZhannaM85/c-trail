@@ -275,6 +275,16 @@ function printAll(sessions, sortBy = 'active') {
     }
     console.log();
   });
+
+  const totalMsgs   = sessions.reduce((s, x) => s + x.messageCount, 0);
+  const totalTokens = sessions.reduce((s, x) => s + x.totalTokens, 0);
+  const totalCost   = sessions.reduce((s, x) => s + x.estimatedCostUSD, 0);
+  const costStr = totalCost >= 0.0001
+    ? `~$${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}`
+    : '$0.00';
+  console.log(`${DIM}${'─'.repeat(60)}${R}`);
+  console.log(`${DIM}Total:${R}  ${CYAN}${BOLD}${sessions.length} sessions${R}  ·  ${CYAN}${BOLD}${totalMsgs} msgs${R}  ·  ${CYAN}${BOLD}${formatTokens(totalTokens)}${R}  ·  ${CYAN}${BOLD}${costStr}${R}`);
+  console.log();
 }
 
 /**
