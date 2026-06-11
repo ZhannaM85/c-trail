@@ -57,4 +57,4 @@ Issues grouped by implementation tier. Work top-to-bottom within each tier.
 | ~~[#20](https://github.com/ZhannaM85/c-trail/issues/20)~~ | ~~feat: `c-trail stats` — aggregate usage summary~~ | ~~Total sessions, tokens, cost; breakdown by project~~ |
 | ~~[#19](https://github.com/ZhannaM85/c-trail/issues/19)~~ | ~~feat: `--since` / `--before` date-range filters~~ | ~~ISO date flags, combinable with existing filters~~ |
 | ~~[#21](https://github.com/ZhannaM85/c-trail/issues/21)~~ | ~~feat: inline search in arrow-key picker~~ | ~~Type `/` to filter in real time; Esc to clear~~ |
-| [#18](https://github.com/ZhannaM85/c-trail/issues/18) | feat: `c-trail delete <id>` — remove a session file | Prints session details, requires y/yes confirmation |
+| ~~[#18](https://github.com/ZhannaM85/c-trail/issues/18)~~ | ~~feat: `c-trail delete <id>` — remove a session file~~ | ~~Prints session details, requires y/yes confirmation~~ |
