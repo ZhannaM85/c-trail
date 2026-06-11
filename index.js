@@ -190,6 +190,7 @@ function parseSession(jsonlPath) {
       } catch {}
     }
     info.allText = messageTexts.join('\n').toLowerCase();
+    info.lastMessage = messageTexts.length > 0 ? messageTexts[messageTexts.length - 1] : '';
     const stat = fs.statSync(jsonlPath);
     info.lastActive = stat.mtime;
     info.fileSize = stat.size;
@@ -257,11 +258,13 @@ function printAll(sessions, sortBy = 'active') {
     const num   = String(i + 1).padStart(String(sessions.length).length);
     const date  = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
     const cwd   = s.cwd || '?';
-    const msg   = (s.firstMessage || '').slice(0, 100);
+    const first = (s.firstMessage || '').slice(0, 100);
+    const last  = s.lastMessage && s.lastMessage !== s.firstMessage ? s.lastMessage.slice(0, 100) : null;
     const pad   = ''.padStart(String(sessions.length).length + 2);
     const stats = sessionStats(s);
     console.log(`${GRAY}${num}.${R} ${DIM}${label} ${R}${CYAN}${date}${R}  ${YELLOW}${BOLD}${cwd}${R}`);
-    console.log(`${pad}  ${GRAY}"${msg}"${R}  ${DIM}[${stats}]${R}`);
+    console.log(`${pad}  ${GRAY}"${first}"${R}  ${DIM}[${stats}]${R}`);
+    if (last) console.log(`${pad}  ${DIM}↳${R} ${GRAY}"${last}"${R}`);
     console.log();
   });
 }
@@ -413,18 +416,21 @@ function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active', 
     for (let i = offset; i < offset + visible; i++) {
       const s = sessions[i];
       const isSelected = i === selected;
-      const date = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
-      const msg  = (s.firstMessage || '(no message)').slice(0, 70);
-      const cwd  = s.cwd || '?';
+      const date  = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
+      const first = (s.firstMessage || '(no message)').slice(0, 38);
+      const last  = s.lastMessage && s.lastMessage !== s.firstMessage ? s.lastMessage.slice(0, 38) : null;
+      const cwd   = s.cwd || '?';
 
       if (isSelected) {
-        const stats = sessionStats(s);
+        const stats   = sessionStats(s);
+        const msgLine = last ? `"${first}"  ${DIM}→${R}${GREEN}  "${last}"` : `"${first}"`;
         process.stdout.write(`${GREEN}${BOLD} ❯ ${R}${DIM}[${R}${CYAN}${BOLD}${date}${R}${DIM}]${R}  ${YELLOW}${BOLD}${cwd}${R}\n`);
-        process.stdout.write(`${GREEN}     "${msg}"  ${R}${DIM}[${stats}]${R}\n`);
+        process.stdout.write(`${GREEN}     ${msgLine}  ${R}${DIM}[${stats}]${R}\n`);
       } else {
-        const stats = sessionStats(s, false);
+        const stats   = sessionStats(s, false);
+        const msgLine = last ? `"${first}"  →  "${last}"` : `"${first}"`;
         process.stdout.write(`${DIM}   [${date}]  ${cwd}${R}\n`);
-        process.stdout.write(`${GRAY}   "${msg}"  [${stats}]${R}\n`);
+        process.stdout.write(`${GRAY}   ${msgLine}  [${stats}]${R}\n`);
       }
     }
   }
