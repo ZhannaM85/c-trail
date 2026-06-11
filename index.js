@@ -293,6 +293,7 @@ function printAll(sessions, sortBy = 'active') {
   console.log(`${DIM}${'─'.repeat(60)}${R}`);
   console.log(`${DIM}Since:${R}  ${GRAY}${sinceStr}${R}`);
   console.log(`${DIM}Total:${R}  ${CYAN}${BOLD}${sessions.length} sessions${R}  ·  ${CYAN}${BOLD}${totalMsgs} msgs${R}  ·  ${CYAN}${BOLD}${formatTokens(totalTokens)}${R}  ·  ${CYAN}${BOLD}${costStr}${R}`);
+  console.log(`${DIM}* Cost is an estimate. Does not reflect subscription plans or cache discounts.${R}`);
   console.log();
 }
 
