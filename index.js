@@ -173,6 +173,7 @@ function parseSession(jsonlPath) {
         if (!info.sessionId && obj.sessionId) info.sessionId = obj.sessionId;
         if (!info.cwd && obj.cwd) info.cwd = obj.cwd;
         if (!info.timestamp && obj.timestamp) info.timestamp = obj.timestamp;
+        if (obj.type === 'custom-title' && obj.customTitle) info.customTitle = obj.customTitle;
         if (obj.type === 'user' && obj.message?.content) {
           const c = obj.message.content;
           const text = (typeof c === 'string' ? c : c[0]?.text || '').replace(/\s+/g, ' ').trim();
@@ -258,13 +259,17 @@ function printAll(sessions, sortBy = 'active') {
     const num   = String(i + 1).padStart(String(sessions.length).length);
     const date  = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
     const cwd   = s.cwd || '?';
-    const first = (s.firstMessage || '').slice(0, 100);
-    const last  = s.lastMessage && s.lastMessage !== s.firstMessage ? s.lastMessage.slice(0, 100) : null;
     const pad   = ''.padStart(String(sessions.length).length + 2);
     const stats = sessionStats(s);
     console.log(`${GRAY}${num}.${R} ${DIM}${label} ${R}${CYAN}${date}${R}  ${YELLOW}${BOLD}${cwd}${R}`);
-    console.log(`${pad}  ${DIM}first:${R} ${GRAY}"${first}"${R}  ${DIM}[${stats}]${R}`);
-    if (last) console.log(`${pad}  ${DIM}last: ${R} ${GRAY}"${last}"${R}`);
+    if (s.customTitle) {
+      console.log(`${pad}  ${CYAN}${s.customTitle}${R}  ${DIM}[${stats}]${R}`);
+    } else {
+      const first = (s.firstMessage || '').slice(0, 100);
+      const last  = s.lastMessage && s.lastMessage !== s.firstMessage ? s.lastMessage.slice(0, 100) : null;
+      console.log(`${pad}  ${DIM}first:${R} ${GRAY}"${first}"${R}  ${DIM}[${stats}]${R}`);
+      if (last) console.log(`${pad}  ${DIM}last: ${R} ${GRAY}"${last}"${R}`);
+    }
     console.log();
   });
 }
@@ -417,18 +422,20 @@ function renderPicker(sessions, selected, offset, prevLines, sortBy = 'active', 
       const s = sessions[i];
       const isSelected = i === selected;
       const date  = formatDate(sortBy === 'created' ? s.timestamp : s.lastActive);
-      const first = (s.firstMessage || '(no message)').slice(0, 38);
-      const last  = s.lastMessage && s.lastMessage !== s.firstMessage ? s.lastMessage.slice(0, 38) : null;
       const cwd   = s.cwd || '?';
 
       if (isSelected) {
         const stats   = sessionStats(s);
-        const msgLine = last ? `"${first}"  ${DIM}→${R}${GREEN}  "${last}"` : `"${first}"`;
+        const msgLine = s.customTitle
+          ? s.customTitle.slice(0, 76)
+          : (() => { const f = (s.firstMessage || '(no message)').slice(0, 38); const l = s.lastMessage && s.lastMessage !== s.firstMessage ? s.lastMessage.slice(0, 38) : null; return l ? `"${f}"  ${DIM}→${R}${GREEN}  "${l}"` : `"${f}"`; })();
         process.stdout.write(`${GREEN}${BOLD} ❯ ${R}${DIM}[${R}${CYAN}${BOLD}${date}${R}${DIM}]${R}  ${YELLOW}${BOLD}${cwd}${R}\n`);
         process.stdout.write(`${GREEN}     ${msgLine}  ${R}${DIM}[${stats}]${R}\n`);
       } else {
         const stats   = sessionStats(s, false);
-        const msgLine = last ? `"${first}"  →  "${last}"` : `"${first}"`;
+        const msgLine = s.customTitle
+          ? s.customTitle.slice(0, 76)
+          : (() => { const f = (s.firstMessage || '(no message)').slice(0, 38); const l = s.lastMessage && s.lastMessage !== s.firstMessage ? s.lastMessage.slice(0, 38) : null; return l ? `"${f}"  →  "${l}"` : `"${f}"`; })();
         process.stdout.write(`${DIM}   [${date}]  ${cwd}${R}\n`);
         process.stdout.write(`${GRAY}   ${msgLine}  [${stats}]${R}\n`);
       }
