@@ -282,7 +282,10 @@ function printAll(sessions, sortBy = 'active') {
   const costStr = totalCost >= 0.0001
     ? `~$${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}`
     : '$0.00';
+  const oldest = sessions.reduce((a, b) => new Date(a.timestamp) < new Date(b.timestamp) ? a : b, sessions[0]);
+  const sinceStr = oldest ? formatDate(oldest.timestamp) : '?';
   console.log(`${DIM}${'─'.repeat(60)}${R}`);
+  console.log(`${DIM}Since:${R}  ${GRAY}${sinceStr}${R}`);
   console.log(`${DIM}Total:${R}  ${CYAN}${BOLD}${sessions.length} sessions${R}  ·  ${CYAN}${BOLD}${totalMsgs} msgs${R}  ·  ${CYAN}${BOLD}${formatTokens(totalTokens)}${R}  ·  ${CYAN}${BOLD}${costStr}${R}`);
   console.log();
 }
