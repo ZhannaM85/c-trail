@@ -37,6 +37,9 @@ Usage:
   c-trail --sort <order>       Sort order: active (default), created, project, messages, size
   c-trail --project <name>     Filter by project name (last folder in path)
   c-trail --filter <text>      Filter by directory path or any message
+  c-trail --today              Show only sessions active today
+  c-trail --yesterday          Show only sessions active yesterday
+  c-trail --day <date>         Show only sessions active on a specific day (YYYY-MM-DD)
   c-trail --since <date>       Show only sessions active on or after YYYY-MM-DD
   c-trail --before <date>      Show only sessions active on or before YYYY-MM-DD
   c-trail --no-fzf             Disable fzf even if it is installed
@@ -63,6 +66,9 @@ Examples:
   c-trail stats --top 5
   c-trail --filter my-project
   c-trail --filter "auth middleware"
+  c-trail --today
+  c-trail --yesterday
+  c-trail --day 2026-06-01
   c-trail --since 2026-06-01
   c-trail --before 2026-05-01
   c-trail --since 2026-05-01 --before 2026-06-01
@@ -1039,6 +1045,12 @@ async function main() {
   const sinceStr   = sinceIdx !== -1 ? args[sinceIdx + 1] : null;
   const beforeIdx  = args.indexOf('--before');
   const beforeStr  = beforeIdx !== -1 ? args[beforeIdx + 1] : null;
+  const dayIdx     = args.indexOf('--day');
+  const isoDate    = (d) => d.toISOString().slice(0, 10);
+  const dayStr     = args.includes('--today')     ? isoDate(new Date())
+                   : args.includes('--yesterday')  ? isoDate(new Date(Date.now() - 86400000))
+                   : dayIdx !== -1                 ? args[dayIdx + 1]
+                   : null;
 
   const SORT_OPTIONS = ['active', 'created', 'project', 'messages', 'size'];
   if (!SORT_OPTIONS.includes(sortBy)) {
@@ -1052,6 +1064,10 @@ async function main() {
   }
 
   const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  if (dayStr && !ISO_DATE_RE.test(dayStr)) {
+    console.error(`${YELLOW}--day requires an ISO date (YYYY-MM-DD), e.g. --day 2026-06-01${R}`);
+    process.exit(1);
+  }
   if (sinceStr && !ISO_DATE_RE.test(sinceStr)) {
     console.error(`${YELLOW}--since requires an ISO date (YYYY-MM-DD), e.g. --since 2026-06-01${R}`);
     process.exit(1);
@@ -1101,6 +1117,16 @@ async function main() {
     );
     if (sessions.length === 0) { console.log(`${YELLOW}No sessions matching "${filterText}".${R}`); return; }
     console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} sessions matching ${YELLOW}"${filterText}"${R}.\n`);
+  }
+
+  if (dayStr) {
+    const from = new Date(dayStr + 'T00:00:00');
+    const to   = new Date(dayStr + 'T00:00:00');
+    to.setDate(to.getDate() + 1);
+    sessions = sessions.filter(s => new Date(s.lastActive) >= from && new Date(s.lastActive) < to);
+    const label = args.includes('--today') ? 'today' : args.includes('--yesterday') ? 'yesterday' : dayStr;
+    if (sessions.length === 0) { console.log(`${YELLOW}No sessions found for ${label} (${dayStr}).${R}`); return; }
+    console.log(`Showing ${CYAN}${BOLD}${sessions.length}${R} sessions for ${YELLOW}${label}${R} ${DIM}(${dayStr})${R}.\n`);
   }
 
   if (sinceStr) {
