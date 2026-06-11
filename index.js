@@ -263,8 +263,8 @@ function printAll(sessions, sortBy = 'active') {
     const pad   = ''.padStart(String(sessions.length).length + 2);
     const stats = sessionStats(s);
     console.log(`${GRAY}${num}.${R} ${DIM}${label} ${R}${CYAN}${date}${R}  ${YELLOW}${BOLD}${cwd}${R}`);
-    console.log(`${pad}  ${GRAY}"${first}"${R}  ${DIM}[${stats}]${R}`);
-    if (last) console.log(`${pad}  ${DIM}↳${R} ${GRAY}"${last}"${R}`);
+    console.log(`${pad}  ${DIM}first:${R} ${GRAY}"${first}"${R}  ${DIM}[${stats}]${R}`);
+    if (last) console.log(`${pad}  ${DIM}last: ${R} ${GRAY}"${last}"${R}`);
     console.log();
   });
 }
