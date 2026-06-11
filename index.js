@@ -28,6 +28,7 @@ Usage:
   c-trail resume <id>          Resume a specific session by ID (skip picker)
   c-trail export <id>          Export a session to Markdown (stdout)
   c-trail export <id> --output <file>  Save exported Markdown to a file
+  c-trail delete <id>          Delete a session file (asks for confirmation)
   c-trail stats                Print aggregate usage summary across all sessions
   c-trail stats --top <n>      Show top n projects in the breakdown (default: 10)
   c-trail --list               Print all sessions and exit
@@ -53,6 +54,7 @@ Examples:
   c-trail resume abc123
   c-trail export abc123
   c-trail export abc123 --output session.md
+  c-trail delete abc123
   c-trail stats
   c-trail stats --top 5
   c-trail --list
@@ -833,6 +835,44 @@ async function main() {
     } else {
       process.stdout.write(markdown + '\n');
     }
+    return;
+  }
+
+  // c-trail delete <id> — remove a session's .jsonl file after confirmation
+  if (args[0] === 'delete') {
+    const targetId = args[1];
+    if (!targetId) {
+      console.error(`${YELLOW}Usage: c-trail delete <session-id>${R}`);
+      process.exit(1);
+    }
+    process.stdout.write(`${DIM}Scanning sessions...${R} `);
+    const sessions = getAllSessions();
+    const projectCount = new Set(sessions.map(s => s.cwd)).size;
+    console.log(`found ${CYAN}${BOLD}${sessions.length}${R} sessions across ${CYAN}${BOLD}${projectCount}${R} projects.\n`);
+
+    const chosen = sessions.find(s => s.sessionId === targetId);
+    if (!chosen) {
+      console.error(`${YELLOW}No session found with ID "${targetId}".${R}`);
+      process.exit(1);
+    }
+
+    console.log(`${BOLD}Session to delete:${R}`);
+    console.log(`  ${DIM}Project${R}    ${YELLOW}${BOLD}${chosen.cwd || '?'}${R}`);
+    console.log(`  ${DIM}Date${R}       ${CYAN}${formatDate(chosen.lastActive)}${R}`);
+    console.log(`  ${DIM}First msg${R}  ${GRAY}"${(chosen.firstMessage || '(none)').slice(0, 100)}"${R}`);
+    console.log(`  ${DIM}File${R}       ${GRAY}${chosen.file}${R}`);
+    console.log();
+
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(`${YELLOW}Delete this session? [y/N]:${R} `, answer => {
+      rl.close();
+      if (answer.trim().toLowerCase() === 'y' || answer.trim().toLowerCase() === 'yes') {
+        fs.unlinkSync(chosen.file);
+        console.log(`\n${GREEN}Deleted${R} ${GRAY}${chosen.file}${R}`);
+      } else {
+        console.log(`${DIM}Aborted.${R}`);
+      }
+    });
     return;
   }
 
