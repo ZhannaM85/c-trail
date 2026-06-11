@@ -860,6 +860,12 @@ function printStats(sessions, topN = 10) {
 async function main() {
   const args = process.argv.slice(2);
 
+  if (args.includes('--version') || args.includes('-v')) {
+    const { version } = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    console.log(`c-trail v${version}`);
+    return;
+  }
+
   if (args.includes('--help') || args.includes('-h')) {
     console.log(HELP);
     return;
